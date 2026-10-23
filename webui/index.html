@@ -1,0 +1,212 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bot Machine</title>
+<style nonce="{{NONCE}}">
+  :root { color-scheme: light dark; --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7384; --line: #dfe3ea; --accent: #3b5bdb; --ok: #2b8a3e; --bad: #c92a2a; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14171f; --card: #1d212c; --text: #e6e9f0; --muted: #98a0b3; --line: #2c3240; --accent: #748ffc; --ok: #51cf66; --bad: #ff6b6b; } }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+  main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  h1 { font-size: 20px; margin: 0; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .grow { flex: 1 1 auto; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line); }
+  .badge.started { color: var(--ok); border-color: var(--ok); }
+  .badge.stopped { color: var(--bad); border-color: var(--bad); }
+  button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.danger { color: var(--bad); }
+  button:disabled { opacity: .5; cursor: wait; }
+  input { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 0; }
+  pre { margin: 12px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
+  .bot { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
+  .bot:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+  .hidden { display: none; }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; max-width: 90vw; }
+</style>
+</head>
+<body>
+<main>
+  <section id="login" class="card hidden">
+    <h2>Bot Machine</h2>
+    <form id="login-form" class="row">
+      <input id="password" type="password" placeholder="Password" autocomplete="current-password" class="grow" required>
+      <button class="primary">Log in</button>
+    </form>
+  </section>
+
+  <section id="app" class="hidden">
+    <header>
+      <h1>Bot Machine</h1>
+      <div class="row">
+        <button id="update-all">Update all</button>
+        <button id="logout">Log out</button>
+      </div>
+    </header>
+
+    <div class="card">
+      <h2>Bots</h2>
+      <div id="bots"><span class="muted">Loading …</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Add a bot</h2>
+      <form id="add-form" class="row">
+        <input id="add-name" placeholder="name" pattern="[a-z0-9][a-z0-9-]*" required>
+        <input id="add-url" class="grow" placeholder="https://github.com/user/repo.git" required>
+        <input id="add-path" placeholder="subfolder (optional)">
+        <button class="primary">Add</button>
+      </form>
+      <p class="muted">For private repositories use a URL with a token: https://&lt;token&gt;@github.com/user/repo.git</p>
+    </div>
+
+    <pre id="output" class="hidden"></pre>
+  </section>
+</main>
+<div id="toast" class="hidden"></div>
+
+<script nonce="{{NONCE}}">
+'use strict';
+const $ = (id) => document.getElementById(id);
+let busy = false;
+
+async function api(method, url, body) {
+  const res = await fetch(url, {
+    method,
+    headers: { 'X-Requested-With': 'botctl-web', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && url !== '/api/login') showLogin();
+  return { ok: res.ok, status: res.status, data };
+}
+
+function toast(text) {
+  const el = $('toast');
+  el.textContent = text;
+  el.classList.remove('hidden');
+  setTimeout(() => el.classList.add('hidden'), 4000);
+}
+
+function showOutput(text) {
+  const el = $('output');
+  el.textContent = text || '(no output)';
+  el.classList.remove('hidden');
+}
+
+function showLogin() {
+  $('app').classList.add('hidden');
+  $('login').classList.remove('hidden');
+}
+
+function el(tag, props = {}, ...children) {
+  const node = Object.assign(document.createElement(tag), props);
+  node.append(...children);
+  return node;
+}
+
+async function act(label, fn) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll('button').forEach((b) => (b.disabled = true));
+  try {
+    const { ok, data } = await fn();
+    showOutput(data.output || data.error || '');
+    toast(ok ? `${label}: done` : `${label}: failed`);
+  } finally {
+    busy = false;
+    await refresh();
+  }
+}
+
+async function showLogs(name) {
+  const { data } = await api('GET', `/api/bots/${name}/logs?lines=200`);
+  showOutput(data.output || '(log is empty)');
+}
+
+async function editEnv(name) {
+  const { data } = await api('GET', `/api/bots/${name}/env`);
+  const keys = Array.isArray(data) ? data : [];
+  const known = keys.map((k) => `${k.key}${k.set ? ' (set)' : ' (empty)'}`).join(', ');
+  const key = prompt(`Variable to set for ${name}:\n${known}`, 'DISCORD_TOKEN');
+  if (!key) return;
+  const value = prompt(`Value for ${key} (it is not shown again):`);
+  if (value === null) return;
+  await act('Set variable', () => api('POST', `/api/bots/${name}/env`, { key, value }));
+  toast(`${key} saved. Restart the bot to apply it.`);
+}
+
+function botView(bot) {
+  const buttons = [
+    ['Start', () => act('Start', () => api('POST', `/api/bots/${bot.name}/start`))],
+    ['Stop', () => act('Stop', () => api('POST', `/api/bots/${bot.name}/stop`))],
+    ['Restart', () => act('Restart', () => api('POST', `/api/bots/${bot.name}/restart`))],
+    ['Update', () => act('Update', () => api('POST', `/api/bots/${bot.name}/update`))],
+    ['Logs', () => showLogs(bot.name)],
+    ['Variables', () => editEnv(bot.name)],
+  ].map(([text, handler]) => el('button', { textContent: text, onclick: handler }));
+  const remove = el('button', {
+    className: 'danger',
+    textContent: 'Delete',
+    onclick: () => {
+      if (prompt(`Type "${bot.name}" to delete the bot including its data:`) === bot.name) {
+        act('Delete', () => api('DELETE', `/api/bots/${bot.name}`));
+      }
+    },
+  });
+  return el(
+    'div',
+    { className: 'bot' },
+    el('div', { className: 'row' },
+      el('strong', { textContent: bot.name }),
+      el('span', { className: `badge ${bot.status}`, textContent: bot.status }),
+      el('span', { className: 'muted', textContent: bot.version }),
+    ),
+    el('div', { className: 'muted', textContent: bot.directory }),
+    el('div', { className: 'row' }, ...buttons, remove),
+  );
+}
+
+async function refresh() {
+  const { ok, data } = await api('GET', '/api/bots');
+  if (!ok) return;
+  $('login').classList.add('hidden');
+  $('app').classList.remove('hidden');
+  const list = $('bots');
+  list.replaceChildren(...(data.length ? data.map(botView) : [el('span', { className: 'muted', textContent: 'No bots installed yet.' })]));
+}
+
+$('login-form').addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const { ok, data } = await api('POST', '/api/login', { password: $('password').value });
+  $('password').value = '';
+  if (ok) await refresh();
+  else toast(data.error || 'Login failed');
+});
+
+$('logout').addEventListener('click', async () => {
+  await api('POST', '/api/logout');
+  showLogin();
+});
+
+$('update-all').addEventListener('click', () => act('Update all', () => api('POST', '/api/update-all')));
+
+$('add-form').addEventListener('submit', (event) => {
+  event.preventDefault();
+  act('Add bot', () => api('POST', '/api/bots', { name: $('add-name').value, url: $('add-url').value, path: $('add-path').value })).then(() => {
+    $('add-url').value = '';
+  });
+});
+
+refresh().then(() => { if (!$('app').classList.contains('hidden')) return; showLogin(); });
+</script>
+</body>
+</html>

@@ -252,7 +252,7 @@ BOTCTL
   msg_ok "Installed botctl"
 
   # Optional inputs, exported by ct/bot-machine.sh: var_bot_name, var_bot_repo, var_bot_path,
-  # var_bot_repo_token, var_discord_token, var_discord_client_id, var_discord_guild_id
+  # var_bot_repo_token, var_web_password, var_discord_token, var_discord_client_id, var_discord_guild_id
   BOT_NAME="${var_bot_name:-jarvis}"
   BOT_REPO="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
   BOT_PATH="${var_bot_path-bot}"
@@ -279,6 +279,36 @@ BOTCTL
     fi
   else
     msg_warn "Could not install bot ${BOT_NAME} from ${BOT_REPO//\/\/*@/\/\/***@}. Add it later with: botctl add <name> <git-url> --path <subfolder>"
+  fi
+
+  # Web interface for botctl (webui/ in this repository). Optional input: var_web_password.
+  msg_info "Installing Web Interface"
+  WEBUI_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main}/webui"
+  install -d -m 0750 /opt/botctl-web /etc/botctl-web
+  if wget -qO /opt/botctl-web/server.js "$WEBUI_URL/server.js" && wget -qO /opt/botctl-web/index.html "$WEBUI_URL/index.html"; then
+    WEB_PASSWORD="${var_web_password:-$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)}"
+    printf '%s\n' "$WEB_PASSWORD" >/etc/botctl-web/password
+    chmod 0600 /etc/botctl-web/password
+    cat <<'WEBSERVICE' >/etc/init.d/botctl-web
+#!/sbin/openrc-run
+description="botctl web interface"
+command="/usr/bin/node"
+command_args="/opt/botctl-web/server.js"
+command_background="yes"
+pidfile="/run/botctl-web.pid"
+output_log="/var/log/botctl-web.log"
+error_log="/var/log/botctl-web.log"
+
+depend() {
+  need net
+}
+WEBSERVICE
+    chmod 0755 /etc/init.d/botctl-web
+    $STD rc-update add botctl-web default
+    $STD rc-service botctl-web start
+    msg_ok "Installed Web Interface"
+  else
+    msg_warn "Could not download the web interface from $WEBUI_URL"
   fi
 }
 

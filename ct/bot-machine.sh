@@ -22,6 +22,7 @@ export var_bot_name="${var_bot_name:-jarvis}"
 export var_bot_repo="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
 export var_bot_path="${var_bot_path-bot}"
 export var_bot_repo_token="${var_bot_repo_token:-}"
+export var_web_password="${var_web_password:-}"
 export var_discord_token="${var_discord_token:-}"
 export var_discord_client_id="${var_discord_client_id:-}"
 export var_discord_guild_id="${var_discord_guild_id:-}"
@@ -50,6 +51,15 @@ update_alpine() {
   fi
   rm -f "$tmp"
 
+  msg_info "Updating Web Interface"
+  local webui_url="${COMMUNITY_SCRIPTS_URL}/webui"
+  if [[ -d /opt/botctl-web ]] && wget -qO /opt/botctl-web/server.js "$webui_url/server.js" && wget -qO /opt/botctl-web/index.html "$webui_url/index.html"; then
+    rc-service botctl-web restart >/dev/null 2>&1 || true
+    msg_ok "Updated Web Interface"
+  else
+    msg_warn "Could not update the web interface"
+  fi
+
   msg_info "Updating Bots"
   $STD botctl update-all
   msg_ok "Updated Bots"
@@ -75,6 +85,10 @@ description
 
 msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
+echo -e "${INFO}${YW}Web interface:${CL} ${BGN}http://${IP:-<container-ip>}:8080${CL}"
+if [[ -z "$var_web_password" ]]; then
+  echo -e "${TAB}${YW}Password:${CL} ${BGN}$(pct exec "$CTID" -- cat /etc/botctl-web/password 2>/dev/null)${CL}"
+fi
 echo -e "${INFO}${YW}Manage the bots inside the container (pct enter ${CTID}) with:${CL}"
 echo -e "${TAB}${BGN}botctl list${CL}"
 if [[ -z "$var_discord_token" || -z "$var_discord_client_id" ]]; then
