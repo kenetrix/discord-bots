@@ -8,6 +8,8 @@ const BULK_MAX_AGE = 14 * 864e5 - 60e3;
  * @param {import('discord.js').TextBasedChannel} channel
  * @param {object} opts
  * @param {number}  [opts.maxAgeMs=0]       Only delete messages older than this (0 = all)
+ * @param {number}  [opts.newerThanMs=0]    Only delete messages newer than this (0 = all)
+ * @param {number}  [opts.keepLatest=0]     Keep the newest N messages of the channel
  * @param {boolean} [opts.keepPinned=true]  Keep pinned messages
  * @param {string}  [opts.userId]           Only messages by this user
  * @param {number}  [opts.limit=Infinity]   Delete at most this many messages
@@ -19,6 +21,8 @@ const BULK_MAX_AGE = 14 * 864e5 - 60e3;
 async function cleanChannel(channel, opts = {}) {
   const {
     maxAgeMs = 0,
+    newerThanMs = 0,
+    keepLatest = 0,
     keepPinned = true,
     userId,
     limit = Infinity,
@@ -36,15 +40,20 @@ async function cleanChannel(channel, opts = {}) {
   while (deleted < limit && scanned < maxScan) {
     const batch = await channel.messages.fetch({ limit: 100, ...(before && { before }) });
     if (batch.size === 0) break;
+    const offset = scanned;
     scanned += batch.size;
     before = batch.last().id;
 
     const now = Date.now();
+    // Messages arrive newest first, so the position in the channel is offset + index.
+    const positions = new Map([...batch.keys()].map((id, i) => [id, offset + i]));
     const candidates = batch.filter(
       (m) =>
+        positions.get(m.id) >= keepLatest &&
         (!keepPinned || !m.pinned) &&
         (!userId || m.author.id === userId) &&
         now - m.createdTimestamp >= maxAgeMs &&
+        (!newerThanMs || now - m.createdTimestamp <= newerThanMs) &&
         !m.system,
     );
 
@@ -75,6 +84,8 @@ async function cleanChannel(channel, opts = {}) {
     }
 
     if (batch.size < 100) break;
+    // Everything further back is older than the window, nothing left to delete.
+    if (newerThanMs && now - batch.last().createdTimestamp > newerThanMs) break;
   }
 
   return { deleted, skippedOld };

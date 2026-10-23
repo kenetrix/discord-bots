@@ -17,11 +17,13 @@ All commands are slash commands. Who can see them is controlled by Discord's def
 | `/rolepanel` | Panel with up to 10 buttons that let members assign roles to themselves | Manage Roles |
 | `/ban add\|remove` | Ban (optionally deleting the last 7 days of messages) or unban | Ban Members |
 | `/timeout add\|remove` | Timeout, e.g. `10m`, `2h`, `1d` (max. 28 days) | Timeout Members |
-| `/purge` | Delete the last 1 to 500 messages, optionally only from one user | Manage Messages |
-| `/cleaner add\|list\|remove\|run` | Clear channels on a schedule | Manage Messages |
+| `/clean` | Delete messages in the current channel right now | Manage Messages |
+| `/cleaner add\|add-voice\|list\|remove\|run` | Scheduled clean-up jobs | Manage Messages |
 | `/config modlog` | Set the moderation log channel | Manage Server |
 
-**Cleaner:** `/cleaner add-voice` clears the chats of all voice channels of the server on a schedule (channels where the bot lacks View Channel, Read Message History or Manage Messages are skipped). The schedule is `hourly`, `daily` (at 04:00), `weekly` (Mondays at 04:00) or a cron expression such as `30 3 * * *`. With `older_than_hours`, recent messages are kept, e.g. `24` for "everything older than one day". Pinned messages are kept by default. Discord only allows messages older than 14 days to be deleted one at a time; the cleaner deletes up to 300 of those per run and continues with the rest on the next run.
+**Clean:** `/clean` deletes messages in the current channel immediately and only reaches messages younger than 14 days. Options: `amount` (1 to 500, default: everything it can reach), `user` (only this user), `later_than` (only messages from the last X hours), `keep_latest` (always keep the newest N messages) and `keep_pinned` (default: yes).
+
+**Cleaner:** `/cleaner` only manages the scheduled jobs. `/cleaner add-voice` clears the chats of all voice channels of the server on a schedule (channels where the bot lacks View Channel, Read Message History or Manage Messages are skipped). The schedule is `hourly`, `daily` (at 04:00), `weekly` (Mondays at 04:00) or a cron expression such as `30 3 * * *`. With `older_than_hours`, recent messages are kept, e.g. `24` for "everything older than one day". `keep_latest` always keeps the newest N messages of each channel. Pinned messages are kept by default. Discord only allows messages older than 14 days to be deleted one at a time; the cleaner deletes up to 300 of those per run and continues with the rest on the next run.
 
 ## 1. Create the bot in Discord
 

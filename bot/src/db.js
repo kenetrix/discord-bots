@@ -24,6 +24,11 @@ db.exec(`
   );
 `);
 
+// Databases created before keep_latest existed get the column added.
+if (!db.prepare('PRAGMA table_info(cleaner_jobs)').all().some((c) => c.name === 'keep_latest')) {
+  db.exec('ALTER TABLE cleaner_jobs ADD COLUMN keep_latest INTEGER NOT NULL DEFAULT 0');
+}
+
 const stmts = {
   getSettings: db.prepare('SELECT * FROM guild_settings WHERE guild_id = ?'),
   setModlog: db.prepare(`
@@ -31,8 +36,8 @@ const stmts = {
     ON CONFLICT(guild_id) DO UPDATE SET modlog_channel_id = excluded.modlog_channel_id
   `),
   addJob: db.prepare(`
-    INSERT INTO cleaner_jobs (guild_id, channel_id, cron, max_age_hours, keep_pinned, created_by)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO cleaner_jobs (guild_id, channel_id, cron, max_age_hours, keep_pinned, keep_latest, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
   getJob: db.prepare('SELECT * FROM cleaner_jobs WHERE guild_id = ? AND id = ?'),
   listJobs: db.prepare('SELECT * FROM cleaner_jobs WHERE guild_id = ? ORDER BY id'),

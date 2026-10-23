@@ -42,6 +42,9 @@ module.exports = {
             .setMinValue(0)
             .setMaxValue(8760),
         )
+        .addIntegerOption((o) =>
+          o.setName('keep_latest').setDescription('Always keep the newest N messages (default: 0)').setMinValue(0).setMaxValue(500),
+        )
         .addBooleanOption((o) =>
           o.setName('keep_pinned').setDescription('Keep pinned messages (default: yes)'),
         ),
@@ -62,6 +65,9 @@ module.exports = {
             .setDescription('Only delete messages older than X hours (default: 0 = all)')
             .setMinValue(0)
             .setMaxValue(8760),
+        )
+        .addIntegerOption((o) =>
+          o.setName('keep_latest').setDescription('Always keep the newest N messages (default: 0)').setMinValue(0).setMaxValue(500),
         )
         .addBooleanOption((o) =>
           o.setName('keep_pinned').setDescription('Keep pinned messages (default: yes)'),
@@ -98,13 +104,16 @@ module.exports = {
       }
       const maxAge = interaction.options.getInteger('older_than_hours') ?? 0;
       const keepPinned = interaction.options.getBoolean('keep_pinned') ?? true;
-      const { lastInsertRowid } = stmts.addJob.run(guildId, channel.id, expr, maxAge, keepPinned ? 1 : 0, interaction.user.id);
+      const keepLatest = interaction.options.getInteger('keep_latest') ?? 0;
+      const { lastInsertRowid } = stmts.addJob.run(guildId, channel.id, expr, maxAge, keepPinned ? 1 : 0, keepLatest, interaction.user.id);
       const job = stmts.getJob.get(guildId, lastInsertRowid);
       scheduleJob(interaction.client, job);
       return ephemeral(
         interaction,
         `Cleaner #${job.id} created: ${channel} will be cleared on \`${expr}\` (${timezone})` +
-          (maxAge ? `, only messages older than ${maxAge} h.` : '.'),
+          (maxAge ? `, only messages older than ${maxAge} h` : '') +
+          (keepLatest ? `, keeping the newest ${keepLatest}` : '') +
+          '.',
       );
     }
 
@@ -116,13 +125,16 @@ module.exports = {
       }
       const maxAge = interaction.options.getInteger('older_than_hours') ?? 0;
       const keepPinned = interaction.options.getBoolean('keep_pinned') ?? true;
-      const { lastInsertRowid } = stmts.addJob.run(guildId, ALL_VOICE, expr, maxAge, keepPinned ? 1 : 0, interaction.user.id);
+      const keepLatest = interaction.options.getInteger('keep_latest') ?? 0;
+      const { lastInsertRowid } = stmts.addJob.run(guildId, ALL_VOICE, expr, maxAge, keepPinned ? 1 : 0, keepLatest, interaction.user.id);
       const job = stmts.getJob.get(guildId, lastInsertRowid);
       scheduleJob(interaction.client, job);
       return ephemeral(
         interaction,
         `Cleaner #${job.id} created: all voice channels will be cleared on \`${expr}\` (${timezone})` +
-          (maxAge ? `, only messages older than ${maxAge} h.` : '.') +
+          (maxAge ? `, only messages older than ${maxAge} h` : '') +
+          (keepLatest ? `, keeping the newest ${keepLatest}` : '') +
+          '.' +
           ' Voice channels where I lack View Channel, Read Message History or Manage Messages are skipped.',
       );
     }
@@ -139,6 +151,7 @@ module.exports = {
               (j) =>
                 `**#${j.id}** · ${j.channel_id === ALL_VOICE ? 'all voice channels' : `<#${j.channel_id}>`} · \`${j.cron}\`` +
                 (j.max_age_hours ? ` · older than ${j.max_age_hours} h` : '') +
+                (j.keep_latest ? ` · keeps newest ${j.keep_latest}` : '') +
                 (j.keep_pinned ? '' : ' · incl. pinned') +
                 `\nLast run: ${j.last_run_at ? `<t:${Math.floor(j.last_run_at / 1000)}:R>` : 'never'}`,
             )
