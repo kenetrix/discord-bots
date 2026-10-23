@@ -51,10 +51,11 @@ is_active() { rc-service "bot.$1" status >/dev/null 2>&1; }
 
 install_deps() {
   local dir="$1"
+  # npm would run "node-gyp rebuild" for better-sqlite3 (needs a compiler); its prebuilt binary is used instead.
   if [[ -f "$dir/package-lock.json" ]]; then
-    (cd "$dir" && as_bot npm ci --omit=dev --no-audit --no-fund)
+    (cd "$dir" && as_bot npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
   else
-    (cd "$dir" && as_bot npm install --omit=dev --no-audit --no-fund)
+    (cd "$dir" && as_bot npm install --omit=dev --ignore-scripts --no-audit --no-fund)
   fi
 }
 
