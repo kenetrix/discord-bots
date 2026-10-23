@@ -23,11 +23,10 @@ Self-hosted Discord bots plus a Proxmox script for the machine they run on. The 
 ## Checks before pushing
 
 - `cd jarvis && npm run check` loads and validates all slash commands without connecting to Discord.
-- `shellcheck -S warning proxmox-helper/ct/bot-machine.sh proxmox-helper/install/bot-machine-install.sh ct/bot-machine.sh` and `shellcheck -s sh -S warning bot-machine/install.sh` for changes to the scripts.
+- `shellcheck -S warning proxmox-helper/ct/bot-machine.sh proxmox-helper/install/bot-machine-install.sh` and `shellcheck -s sh -S warning bot-machine/install.sh` for changes to the scripts.
 
 ## Proxmox scripts
 
 - Keep the community-scripts structure inside `proxmox-helper/`: `ct/<app>.sh` sources the engine (`build.func`) and sets `APP` and the `var_*` defaults, `install/<app>-install.sh` sources `$FUNCTIONS_FILE_PATH` and runs inside the container. See https://community-scripts.org/docs/ct/detailed_guide and https://community-scripts.org/docs/install/detailed_guide.
 - Credentials are read from the environment (`var_*`), never stored in the repo.
-- The top-level `ct/bot-machine.sh` is only a compatibility stub for containers created before the move into `proxmox-helper/`; their `update` still downloads that path. Do not put logic into it.
 - `proxmox-helper/` only provides the Proxmox environment and call the installer. All bot machine logic (packages, user, service, password, update, uninstall) lives in `bot-machine/install.sh`, `bot-machine/botctl/` and `bot-machine/webui/`, which must stay usable on any Alpine machine without Proxmox. `install.sh` is POSIX `sh` (Alpine has no bash before it installs it) and must stay idempotent.
