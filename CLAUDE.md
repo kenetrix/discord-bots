@@ -13,6 +13,7 @@ Self-hosted Discord bots plus a Proxmox script for the machine they run on. The 
 - Do not commit file by file. Put all files that share the same context into one commit (for example a script, its docs and its tests together) and only split commits where the context really differs.
 - Do not add `Co-Authored-By` trailers, `Claude-Session` lines or "Generated with Claude Code" footers to commits or pull request descriptions.
 - Do not add a visible "Requested by ..." line to pull request descriptions.
+- Do not open a new pull request for every change. If an open pull request covers the same context (for example another small change to the web interface), add the change as a new commit to its branch instead.
 
 ## Names
 
