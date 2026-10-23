@@ -23,7 +23,7 @@ All commands are slash commands. Who can see them is controlled by Discord's def
 | `/cleaner add\|list\|remove\|run` | Clear channels on a schedule | Manage Messages |
 | `/config modlog` | Set the moderation log channel | Manage Server |
 
-**Cleaner:** The schedule is `hourly`, `daily` (at 04:00), `weekly` (Mondays at 04:00) or a cron expression such as `30 3 * * *`. With `older_than_hours`, recent messages are kept, e.g. `24` for "everything older than one day". Pinned messages are kept by default. Discord only allows messages older than 14 days to be deleted one at a time; the cleaner deletes up to 300 of those per run and continues with the rest on the next run.
+**Cleaner:** It clears text, announcement, voice and stage channels (the text chat of a voice or stage channel). The schedule is `hourly`, `daily` (at 04:00), `weekly` (Mondays at 04:00) or a cron expression such as `30 3 * * *`. With `older_than_hours`, recent messages are kept, e.g. `24` for "everything older than one day". Pinned messages are kept by default. Discord only allows messages older than 14 days to be deleted one at a time; the cleaner deletes up to 300 of those per run and continues with the rest on the next run.
 
 ## 1. Create the bot in Discord
 

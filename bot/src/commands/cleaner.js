@@ -25,9 +25,9 @@ module.exports = {
         .addChannelOption((o) =>
           o
             .setName('channel')
-            .setDescription('Channel to clear')
+            .setDescription('Channel to clear (text, announcement, voice or stage chat)')
             .setRequired(true)
-            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice),
+            .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice, ChannelType.GuildStageVoice),
         )
         .addStringOption((o) =>
           o
