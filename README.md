@@ -5,7 +5,7 @@ Self-hosted Discord bots (starting with Jarvis) plus a Proxmox script for the "b
 | Folder | Contents |
 | --- | --- |
 | [`bot/`](bot/) | Jarvis: roles, moderation, cleanup (Node.js, discord.js v14) |
-| [`proxmox/`](proxmox/) | `bot-machine.sh`: creates an LXC that runs any number of bots |
+| [`ct/`](ct/) and [`install/`](install/) | `bot-machine` scripts in the [community-scripts](https://community-scripts.org/) layout: create an LXC that runs any number of bots |
 
 ## Bot features
 
@@ -38,37 +38,57 @@ All commands are slash commands. Who can see them is controlled by Discord's def
 
 ## 2. Create the bot machine on Proxmox
 
-Run on the Proxmox host as root. Since the repo is private, either copy the script with `scp`:
+The scripts follow the layout of the [community-scripts](https://community-scripts.org/) project: `ct/bot-machine.sh` runs on the Proxmox host and creates the container, `install/bot-machine-install.sh` runs inside it. They use the community-scripts engine (`build.func`), so the usual dialogs (default settings, advanced settings, storage, network) work as in any community script.
+
+Run on the Proxmox host as root. Since this repository is private, clone it with a GitHub token (fine-grained, read-only access to this repo) and start the script from the clone, which makes it use the `install/` script next to it:
 
 ```bash
-scp proxmox/bot-machine.sh root@<proxmox-host>:/root/
-ssh root@<proxmox-host> bash /root/bot-machine.sh
+git clone https://<token>@github.com/kenetrix/discord-bots.git
+bash discord-bots/ct/bot-machine.sh
 ```
 
-or load it directly with a GitHub token (fine-grained, read-only access to this repo):
+Once the repository is public, the community-scripts one-liner works as well:
 
 ```bash
-TOKEN=github_pat_...
-bash -c "$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
-  https://raw.githubusercontent.com/kenetrix/discord-bots/main/proxmox/bot-machine.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/main/ct/bot-machine.sh)"
 ```
 
-The script asks whether to use the defaults (Debian, 1 core, 1024 MB RAM, 8 GB disk, DHCP on `vmbr0`) or let you adjust them. It then installs Node.js, git and `botctl`, and offers to set up the first bot right away. For that it asks for the git URL, the subfolder (`bot`) and the empty values from `.env.example`.
+Defaults: Debian 13, 1 core, 1024 MB RAM, 8 GB disk, unprivileged. Override them with the usual `var_*` variables, for example `var_ram=2048 var_disk=16 bash discord-bots/ct/bot-machine.sh`.
 
-Without dialogs: `CTID=120 RAM=1024 STORAGE=local-lvm bash bot-machine.sh --yes`
+The install script sets up Node.js, git, `botctl` and the first bot. It reads these optional inputs from the environment; nothing is stored in the repo or in the defaults file:
+
+| Variable | Meaning | Default |
+| --- | --- | --- |
+| `var_bot_name` | Name of the first bot | `jarvis` |
+| `var_bot_repo` | Git URL of the bot | this repository |
+| `var_bot_path` | Subfolder with the `package.json` | `bot` |
+| `var_bot_repo_token` | GitHub token for a private repo (stored in the bot's `.git/config`) | none |
+| `var_discord_token`, `var_discord_client_id`, `var_discord_guild_id` | Written to the bot's `.env`; with token and client ID the bot is started right away | none |
+
+Example for a fully unattended setup:
+
+```bash
+var_bot_repo_token=github_pat_... var_discord_token=... var_discord_client_id=... \
+  bash discord-bots/ct/bot-machine.sh
+```
+
+Without Discord credentials the container is still created; finish with `botctl env jarvis` and `botctl start jarvis` as described below.
 
 ## 3. Manage bots (inside the container, `pct enter <CTID>`)
 
 ```bash
-botctl add jarvis https://<token>@github.com/kenetrix/discord-bots.git --path bot
+botctl add <name> https://<token>@github.com/<user>/<repo>.git --path <subfolder>
 botctl env jarvis        # enter DISCORD_TOKEN, CLIENT_ID, GUILD_ID
 botctl start jarvis      # registers slash commands and starts the bot
 botctl logs jarvis
-botctl update jarvis     # git pull, npm ci, re-register commands, restart
+botctl update jarvis     # git pull, npm ci, re-register commands, restart if running
+botctl update-all        # the same for every bot
 botctl list
 ```
 
 Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the systemd service `bot@<name>` and starts automatically after a reboot. Another bot only needs a repo with a `package.json` and a `start` script; an optional `deploy-commands` script runs on `start` and `update`.
+
+The community-scripts `update` command inside the container re-runs `ct/bot-machine.sh`, which updates all bots and the OS packages. It fetches the script from the repository, so it only works while the repository is publicly readable; `botctl update-all` always works.
 
 ## Local development
 
