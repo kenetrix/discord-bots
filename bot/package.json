@@ -1,7 +1,7 @@
 {
-  "name": "ken-discord-bot",
+  "name": "jarvis",
   "version": "0.1.0",
-  "description": "Moderation, Rollen und Cleanup für Discord",
+  "description": "Roles, moderation and cleanup for Discord",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
