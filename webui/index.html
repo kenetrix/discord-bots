@@ -40,6 +40,7 @@
   pre { margin: 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
   .var { margin-bottom: 6px; }
   .varbox { margin-top: 12px; }
+  .logbar { margin-bottom: 6px; }
   .varname { flex: 0 0 160px; font-family: ui-monospace, monospace; font-size: 12.5px; }
   .menu { position: relative; }
   .menu summary { list-style: none; cursor: pointer; padding: 5px 10px; border-radius: 7px; color: var(--muted); user-select: none; }
@@ -227,14 +228,31 @@ async function toggleVariables(bot, box) {
   );
 }
 
-async function showLogs(name) {
-  const { data } = await api('GET', `/api/bots/${name}/logs?lines=200`);
-  showOutput(data.output || '(log is empty)');
+async function toggleLogs(bot, box) {
+  if (box.childElementCount) return box.replaceChildren();
+  const text = el('pre');
+  const load = async () => {
+    const { data } = await api('GET', `/api/bots/${bot.name}/logs?lines=200`);
+    text.textContent = data.output || '(log is empty)';
+    text.scrollTop = text.scrollHeight;
+  };
+  box.replaceChildren(
+    el('div', { className: 'row spread logbar' },
+      el('span', { className: 'muted', textContent: 'Last 200 log lines' }),
+      el('div', { className: 'row' },
+        el('button', { className: 'ghost', textContent: 'Refresh', onclick: load }),
+        el('button', { className: 'ghost', textContent: 'Hide', onclick: () => box.replaceChildren() }),
+      ),
+    ),
+    text,
+  );
+  await load();
 }
 
 function botView(bot) {
   const running = bot.status === 'started';
   const box = el('div', { className: 'varbox' });
+  const logBox = el('div', { className: 'varbox' });
 
   const menu = el('details', { className: 'menu' },
     el('summary', { textContent: '⋯', title: 'More actions' }),
@@ -276,10 +294,11 @@ function botView(bot) {
       el('button', { textContent: 'Restart', onclick: post(bot.name, 'restart') }),
       el('span', { className: 'sep' }),
       el('button', { className: 'ghost', textContent: 'Variables', onclick: () => toggleVariables(bot, box) }),
-      el('button', { className: 'ghost', textContent: 'Logs', onclick: () => showLogs(bot.name) }),
+      el('button', { className: 'ghost', textContent: 'Logs', onclick: () => toggleLogs(bot, logBox) }),
       menu,
     ),
     box,
+    logBox,
   );
 }
 
