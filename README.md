@@ -53,7 +53,7 @@ Once the repository is public, the community-scripts one-liner works as well:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/main/ct/bot-machine.sh)"
 ```
 
-Defaults: Debian 13, 1 core, 512 MB RAM, 2 GB disk, unprivileged. The install is lean (no compiler: `better-sqlite3` ships prebuilt binaries); Node.js (about 200 MB), git, the Debian base and the bot's `node_modules` (about 55 MB) should add up to roughly 1 GB on disk (estimate, not measured), so 2 GB leaves room for updates and the database. Values below 2 GB are not recommended. Override them with the usual `var_*` variables, for example `var_ram=2048 var_disk=16 bash discord-bots/ct/bot-machine.sh`.
+Defaults: Alpine 3.24, 1 core, 256 MB RAM, 1 GB disk, unprivileged. The install is lean: no compiler is needed because `better-sqlite3` ships prebuilt binaries for Alpine (musl). Node.js, git, bash and the bot's `node_modules` (about 55 MB) should add up to roughly 350 MB on disk (estimate, not measured), so 1 GB leaves room for updates and the database. The scripts support Alpine only. Override them with the usual `var_*` variables, for example `var_ram=512 var_disk=2 bash discord-bots/ct/bot-machine.sh`.
 
 The install script sets up Node.js, git, `botctl` and the first bot. It reads these optional inputs from the environment; nothing is stored in the repo or in the defaults file:
 
@@ -86,7 +86,7 @@ botctl update-all        # the same for every bot
 botctl list
 ```
 
-Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the systemd service `bot@<name>` and starts automatically after a reboot. Another bot only needs a repo with a `package.json` and a `start` script; an optional `deploy-commands` script runs on `start` and `update`.
+Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the OpenRC service `bot.<name>` (log: `/var/log/bots/<name>.log`) and starts automatically after a reboot. Another bot only needs a repo with a `package.json` and a `start` script; an optional `deploy-commands` script runs on `start` and `update`.
 
 The community-scripts `update` command inside the container re-runs `ct/bot-machine.sh`, which updates all bots and the OS packages. It fetches the script from the repository, so it only works while the repository is publicly readable; `botctl update-all` always works.
 
