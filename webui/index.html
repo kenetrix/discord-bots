@@ -5,35 +5,55 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Bot Machine</title>
 <style nonce="{{NONCE}}">
-  :root { color-scheme: light dark; --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7384; --line: #dfe3ea; --accent: #3b5bdb; --ok: #2b8a3e; --bad: #c92a2a; }
-  @media (prefers-color-scheme: dark) { :root { --bg: #14171f; --card: #1d212c; --text: #e6e9f0; --muted: #98a0b3; --line: #2c3240; --accent: #748ffc; --ok: #51cf66; --bad: #ff6b6b; } }
+  :root { color-scheme: light dark; --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7384; --line: #dfe3ea; --accent: #3b5bdb; --ok: #2b8a3e; --bad: #c92a2a; --shadow: 0 6px 24px rgba(0, 0, 0, .12); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14171f; --card: #1d212c; --text: #e6e9f0; --muted: #98a0b3; --line: #2c3240; --accent: #748ffc; --ok: #51cf66; --bad: #ff6b6b; --shadow: 0 6px 24px rgba(0, 0, 0, .5); } }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
   main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
-  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 16px; }
+  header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
   h1 { font-size: 20px; margin: 0; }
   h2 { font-size: 16px; margin: 0 0 12px; }
-  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
   .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+  .spread { justify-content: space-between; }
   .grow { flex: 1 1 auto; }
   .muted { color: var(--muted); font-size: 13px; }
-  .badge { display: inline-block; padding: 1px 8px; border-radius: 99px; font-size: 12px; border: 1px solid var(--line); }
-  .badge.started { color: var(--ok); border-color: var(--ok); }
-  .badge.stopped { color: var(--bad); border-color: var(--bad); }
-  button { font: inherit; padding: 5px 12px; border-radius: 6px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
+  .dir { word-break: break-all; margin-top: 2px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--bad); flex: none; }
+  .dot.started { background: var(--ok); }
+  .name { font-size: 17px; font-weight: 600; }
+  .actions { margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--line); }
+  .sep { flex: 1 1 0; }
+  button { font: inherit; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
   button:hover { border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+  button.ghost:hover { color: var(--text); border-color: var(--line); }
   button.danger { color: var(--bad); }
+  button.danger:hover { border-color: var(--bad); }
   button:disabled { opacity: .5; cursor: wait; }
-  input { font: inherit; padding: 5px 8px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 0; }
-  pre { margin: 12px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
-  .bot { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
-  .bot:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+  input { font: inherit; padding: 6px 9px; border-radius: 7px; border: 1px solid var(--line); background: var(--bg); color: var(--text); min-width: 0; }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  label.field { display: block; margin-bottom: 10px; }
+  label.field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 3px; }
+  label.field input { width: 100%; }
+  pre { margin: 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
   .var { margin-bottom: 6px; }
-  .varbox { margin-top: 8px; }
+  .varbox { margin-top: 12px; }
   .varname { flex: 0 0 160px; font-family: ui-monospace, monospace; font-size: 12.5px; }
+  .menu { position: relative; }
+  .menu summary { list-style: none; cursor: pointer; padding: 5px 10px; border-radius: 7px; color: var(--muted); user-select: none; }
+  .menu summary::-webkit-details-marker { display: none; }
+  .menu summary:hover, .menu[open] summary { color: var(--text); background: var(--bg); }
+  .menu .items { position: absolute; right: 0; top: calc(100% + 4px); z-index: 5; min-width: 150px; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); padding: 4px; display: flex; flex-direction: column; }
+  .menu .items button { text-align: left; border: 0; background: transparent; }
+  .menu .items button:hover { background: var(--bg); }
+  dialog { border: 1px solid var(--line); border-radius: 14px; background: var(--card); color: var(--text); padding: 20px; width: min(440px, calc(100vw - 32px)); box-shadow: var(--shadow); }
+  dialog::backdrop { background: rgba(0, 0, 0, .45); }
+  #output-card { position: relative; }
+  #output-card .ghost { position: absolute; top: 8px; right: 8px; }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; max-width: 90vw; z-index: 10; }
   .hidden { display: none; }
-  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; max-width: 90vw; }
 </style>
 </head>
 <body>
@@ -50,35 +70,41 @@
     <header>
       <h1>Bot Machine</h1>
       <div class="row">
+        <button id="add-open" class="primary">+ Add bot</button>
         <button id="update-all">Update all</button>
-        <button id="logout">Log out</button>
+        <button id="logout" class="ghost">Log out</button>
       </div>
     </header>
 
-    <div class="card">
-      <h2>Bots</h2>
-      <div id="bots"><span class="muted">Loading …</span></div>
-    </div>
+    <div id="bots"><div class="card muted">Loading …</div></div>
 
-    <div class="card">
-      <h2>Add a bot</h2>
-      <form id="add-form" class="row">
-        <input id="add-name" placeholder="name" pattern="[a-z0-9][a-z0-9-]*" required>
-        <input id="add-url" class="grow" placeholder="https://github.com/user/repo.git" required>
-        <input id="add-path" placeholder="subfolder (optional)">
-        <button class="primary">Add</button>
-      </form>
-      <p class="muted">For private repositories use a URL with a token: https://&lt;token&gt;@github.com/user/repo.git</p>
+    <div id="output-card" class="card hidden">
+      <button id="output-close" class="ghost" aria-label="Close output">✕</button>
+      <pre id="output"></pre>
     </div>
-
-    <pre id="output" class="hidden"></pre>
   </section>
 </main>
+
+<dialog id="add-dialog">
+  <form id="add-form" method="dialog">
+    <h2>Add a bot</h2>
+    <label class="field"><span>Name</span><input id="add-name" pattern="[a-z0-9][a-z0-9\-]*" placeholder="my-bot" required></label>
+    <label class="field"><span>Git URL (https)</span><input id="add-url" placeholder="https://github.com/user/repo.git" required></label>
+    <label class="field"><span>Subfolder (optional)</span><input id="add-path" placeholder="bot"></label>
+    <p class="muted">For private repositories use a URL with a token: https://&lt;token&gt;@github.com/user/repo.git</p>
+    <div class="row spread">
+      <button type="button" id="add-cancel">Cancel</button>
+      <button class="primary">Add bot</button>
+    </div>
+  </form>
+</dialog>
+
 <div id="toast" class="hidden"></div>
 
 <script nonce="{{NONCE}}">
 'use strict';
 const $ = (id) => document.getElementById(id);
+const SECRET_RE = /TOKEN|SECRET|PASSWORD|KEY/;
 let busy = false;
 
 async function api(method, url, body) {
@@ -92,47 +118,29 @@ async function api(method, url, body) {
   return { ok: res.ok, status: res.status, data };
 }
 
-function toast(text) {
-  const el = $('toast');
-  el.textContent = text;
-  el.classList.remove('hidden');
-  setTimeout(() => el.classList.add('hidden'), 4000);
-}
-
-function showOutput(text) {
-  const el = $('output');
-  el.textContent = text || '(no output)';
-  el.classList.remove('hidden');
-}
-
-function showLogin() {
-  $('app').classList.add('hidden');
-  $('login').classList.remove('hidden');
-}
-
 function el(tag, props = {}, ...children) {
   const node = Object.assign(document.createElement(tag), props);
   node.append(...children);
   return node;
 }
 
-async function act(label, fn) {
-  if (busy) return;
-  busy = true;
-  document.querySelectorAll('button').forEach((b) => (b.disabled = true));
-  try {
-    const { ok, data } = await fn();
-    showOutput(data.output || data.error || '');
-    toast(ok ? `${label}: done` : `${label}: failed`);
-  } finally {
-    busy = false;
-    await refresh();
-  }
+function toast(text) {
+  const node = $('toast');
+  node.textContent = text;
+  node.classList.remove('hidden');
+  clearTimeout(toast.timer);
+  toast.timer = setTimeout(() => node.classList.add('hidden'), 4000);
 }
 
-async function showLogs(name) {
-  const { data } = await api('GET', `/api/bots/${name}/logs?lines=200`);
-  showOutput(data.output || '(log is empty)');
+function showOutput(text) {
+  $('output').textContent = text || '(no output)';
+  $('output-card').classList.remove('hidden');
+  $('output-card').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+
+function showLogin() {
+  $('app').classList.add('hidden');
+  $('login').classList.remove('hidden');
 }
 
 async function copyText(text) {
@@ -152,7 +160,22 @@ async function copyText(text) {
   }
 }
 
-const SECRET_RE = /TOKEN|SECRET|PASSWORD|KEY/;
+async function act(label, fn) {
+  if (busy) return;
+  busy = true;
+  document.querySelectorAll('button').forEach((b) => (b.disabled = true));
+  try {
+    const { ok, data } = await fn();
+    showOutput(data.output || data.error || '');
+    toast(ok ? `${label}: done` : `${label}: failed`);
+  } finally {
+    busy = false;
+    document.querySelectorAll('button').forEach((b) => (b.disabled = false));
+    await refresh();
+  }
+}
+
+const post = (name, action) => () => act(action[0].toUpperCase() + action.slice(1), () => api('POST', `/api/bots/${name}/${action}`));
 
 function varRow(variable) {
   const secret = SECRET_RE.test(variable.key);
@@ -160,7 +183,7 @@ function varRow(variable) {
     className: 'grow',
     type: secret ? 'password' : 'text',
     value: variable.value || '',
-    placeholder: secret ? (variable.set ? 'set - leave empty to keep' : 'not set') : 'not set',
+    placeholder: secret && variable.set ? 'set - leave empty to keep' : 'not set',
     autocomplete: 'off',
   });
   input.dataset.key = variable.key;
@@ -168,11 +191,8 @@ function varRow(variable) {
   return el('label', { className: 'row var' }, el('span', { className: 'varname', textContent: variable.key }), input);
 }
 
-async function openVariables(bot, box) {
-  if (box.childElementCount) {
-    box.replaceChildren();
-    return;
-  }
+async function toggleVariables(bot, box) {
+  if (box.childElementCount) return box.replaceChildren();
   const { ok, data } = await api('GET', `/api/bots/${bot.name}/env`);
   if (!ok) return toast(data.error || 'Could not load variables');
   const rows = el('div', {}, ...data.vars.map(varRow));
@@ -190,54 +210,75 @@ async function openVariables(bot, box) {
         const res = await api('POST', `/api/bots/${bot.name}/env`, change);
         if (!res.ok) return res;
       }
-      return restart ? api('POST', `/api/bots/${bot.name}/restart`) : { ok: true, data: { output: `${changes.length} variable(s) saved. Restart the bot to apply them.` } };
+      return restart
+        ? api('POST', `/api/bots/${bot.name}/restart`)
+        : { ok: true, data: { output: `${changes.length} variable(s) saved. Restart the bot to apply them.` } };
     });
   };
 
-  const buttons = [el('button', { className: 'primary', type: 'button', textContent: 'Save', onclick: () => save(false) }),
-    el('button', { type: 'button', textContent: 'Save and restart', onclick: () => save(true) })];
-  if (data.inviteUrl) {
-    buttons.push(el('button', {
-      type: 'button',
-      textContent: 'Copy invite link',
-      onclick: async () => toast((await copyText(data.inviteUrl)) ? 'Invite link copied.' : 'Copying failed, select the link manually.'),
-    }));
-  } else {
-    buttons.push(el('span', { className: 'muted', textContent: 'Set CLIENT_ID to get an invite link.' }));
-  }
-  box.replaceChildren(rows, el('div', { className: 'row var' }, extraKey, extraValue), el('div', { className: 'row' }, ...buttons),
-    el('p', { className: 'muted', textContent: 'Secret values (tokens) are never shown; leave a field empty to keep its value.' }));
+  box.replaceChildren(
+    rows,
+    el('div', { className: 'row var' }, extraKey, extraValue),
+    el('div', { className: 'row' },
+      el('button', { className: 'primary', type: 'button', textContent: 'Save', onclick: () => save(false) }),
+      el('button', { type: 'button', textContent: 'Save and restart', onclick: () => save(true) }),
+    ),
+    el('p', { className: 'muted', textContent: 'Secret values (tokens) are never shown; leave a field empty to keep its value.' }),
+  );
+}
+
+async function showLogs(name) {
+  const { data } = await api('GET', `/api/bots/${name}/logs?lines=200`);
+  showOutput(data.output || '(log is empty)');
 }
 
 function botView(bot) {
+  const running = bot.status === 'started';
   const box = el('div', { className: 'varbox' });
-  const buttons = [
-    ['Start', () => act('Start', () => api('POST', `/api/bots/${bot.name}/start`))],
-    ['Stop', () => act('Stop', () => api('POST', `/api/bots/${bot.name}/stop`))],
-    ['Restart', () => act('Restart', () => api('POST', `/api/bots/${bot.name}/restart`))],
-    ['Update', () => act('Update', () => api('POST', `/api/bots/${bot.name}/update`))],
-    ['Logs', () => showLogs(bot.name)],
-    ['Variables', () => openVariables(bot, box)],
-  ].map(([text, handler]) => el('button', { textContent: text, onclick: handler }));
-  const remove = el('button', {
-    className: 'danger',
-    textContent: 'Delete',
-    onclick: () => {
-      if (prompt(`Type "${bot.name}" to delete the bot including its data:`) === bot.name) {
-        act('Delete', () => api('DELETE', `/api/bots/${bot.name}`));
-      }
-    },
-  });
-  return el(
-    'div',
-    { className: 'bot' },
-    el('div', { className: 'row' },
-      el('strong', { textContent: bot.name }),
-      el('span', { className: `badge ${bot.status}`, textContent: bot.status }),
-      el('span', { className: 'muted', textContent: bot.version }),
+
+  const menu = el('details', { className: 'menu' },
+    el('summary', { textContent: '⋯', title: 'More actions' }),
+    el('div', { className: 'items' },
+      el('button', { textContent: 'Update', onclick: post(bot.name, 'update') }),
+      el('button', {
+        className: 'danger',
+        textContent: 'Delete …',
+        onclick: () => {
+          if (prompt(`Type "${bot.name}" to delete the bot including its data:`) === bot.name) {
+            act('Delete', () => api('DELETE', `/api/bots/${bot.name}`));
+          }
+        },
+      }),
     ),
-    el('div', { className: 'muted', textContent: bot.directory }),
-    el('div', { className: 'row' }, ...buttons, remove),
+  );
+
+  const invite = bot.inviteUrl
+    ? el('button', {
+        className: 'ghost',
+        textContent: 'Copy invite link',
+        title: 'Copy the Discord invite link of this bot',
+        onclick: async () => toast((await copyText(bot.inviteUrl)) ? 'Invite link copied.' : 'Copying failed.'),
+      })
+    : null;
+
+  return el('div', { className: 'card' },
+    el('div', { className: 'row spread' },
+      el('div', { className: 'row' },
+        el('span', { className: `dot ${bot.status}`, title: bot.status }),
+        el('span', { className: 'name', textContent: bot.name }),
+        el('span', { className: 'muted', textContent: bot.version }),
+      ),
+      ...(invite ? [invite] : []),
+    ),
+    el('div', { className: 'muted dir', textContent: bot.directory }),
+    el('div', { className: 'row actions' },
+      el('button', running ? { textContent: 'Stop', onclick: post(bot.name, 'stop') } : { className: 'primary', textContent: 'Start', onclick: post(bot.name, 'start') }),
+      el('button', { textContent: 'Restart', onclick: post(bot.name, 'restart') }),
+      el('span', { className: 'sep' }),
+      el('button', { className: 'ghost', textContent: 'Variables', onclick: () => toggleVariables(bot, box) }),
+      el('button', { className: 'ghost', textContent: 'Logs', onclick: () => showLogs(bot.name) }),
+      menu,
+    ),
     box,
   );
 }
@@ -247,9 +288,14 @@ async function refresh() {
   if (!ok) return;
   $('login').classList.add('hidden');
   $('app').classList.remove('hidden');
-  const list = $('bots');
-  list.replaceChildren(...(data.length ? data.map(botView) : [el('span', { className: 'muted', textContent: 'No bots installed yet.' })]));
+  $('bots').replaceChildren(...(data.length ? data.map(botView) : [el('div', { className: 'card muted', textContent: 'No bots installed yet. Use "Add bot".' })]));
 }
+
+document.addEventListener('click', (event) => {
+  document.querySelectorAll('details.menu[open]').forEach((menu) => {
+    if (!menu.contains(event.target) || event.target.closest('.items button')) menu.removeAttribute('open');
+  });
+});
 
 $('login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
@@ -265,15 +311,18 @@ $('logout').addEventListener('click', async () => {
 });
 
 $('update-all').addEventListener('click', () => act('Update all', () => api('POST', '/api/update-all')));
+$('output-close').addEventListener('click', () => $('output-card').classList.add('hidden'));
 
-$('add-form').addEventListener('submit', (event) => {
-  event.preventDefault();
-  act('Add bot', () => api('POST', '/api/bots', { name: $('add-name').value, url: $('add-url').value, path: $('add-path').value })).then(() => {
-    $('add-url').value = '';
-  });
+$('add-open').addEventListener('click', () => $('add-dialog').showModal());
+$('add-cancel').addEventListener('click', () => $('add-dialog').close());
+$('add-form').addEventListener('submit', () => {
+  const body = { name: $('add-name').value, url: $('add-url').value, path: $('add-path').value };
+  $('add-dialog').close();
+  $('add-form').reset();
+  act('Add bot', () => api('POST', '/api/bots', body));
 });
 
-refresh().then(() => { if (!$('app').classList.contains('hidden')) return; showLogin(); });
+refresh().then(() => { if ($('app').classList.contains('hidden')) showLogin(); });
 </script>
 </body>
 </html>
