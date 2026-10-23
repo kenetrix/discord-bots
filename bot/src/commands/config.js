@@ -57,7 +57,34 @@ function allowed(interaction) {
   return interaction.memberPermissions?.has(PermissionFlagsBits.ManageGuild);
 }
 
+/** Channel for the welcome message: the system channel, else the first text channel the bot can post in. */
+function welcomeChannel(guild) {
+  const me = guild.members.me;
+  const canPost = (c) => c?.permissionsFor(me)?.has([...LOG_PERMISSIONS]);
+  if (canPost(guild.systemChannel)) return guild.systemChannel;
+  return guild.channels.cache
+    .filter((c) => c.type === ChannelType.GuildText && canPost(c))
+    .sort((a, b) => a.rawPosition - b.rawPosition)
+    .first();
+}
+
+/** Posts the settings dashboard as the first message after the bot joined a server. */
+async function welcome(guild) {
+  const channel = welcomeChannel(guild);
+  if (!channel) {
+    console.warn(`No channel to post the settings dashboard in ${guild.id}; use /config.`);
+    return;
+  }
+  const { embeds, components } = dashboard(guild);
+  await channel.send({
+    content: 'Hi, I am Jarvis. Set me up here, or open this panel again any time with `/config`. Only members with Manage Server can change settings.',
+    embeds,
+    components,
+  });
+}
+
 module.exports = {
+  welcome,
   data: new SlashCommandBuilder()
     .setName('config')
     .setDescription('Open the settings dashboard of this server')
