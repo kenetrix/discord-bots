@@ -1,11 +1,15 @@
 #!/usr/bin/env bash
 # Scripts base for runs that did not start from a clone of this repository. The engine
 # prefers the clone it was started from (ct/ and install/ next to each other) over this URL.
-# The URL points at this folder (bot-machine/); containers created before the move still export the
-# repository root, so the folder is appended when missing.
-COMMUNITY_SCRIPTS_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine}"
-case "$COMMUNITY_SCRIPTS_URL" in */bot-machine) ;; *) COMMUNITY_SCRIPTS_URL="${COMMUNITY_SCRIPTS_URL%/}/bot-machine" ;; esac
-export COMMUNITY_SCRIPTS_URL
+# COMMUNITY_SCRIPTS_URL points at this folder (proxmox-helper/), where the engine finds install/.
+# Containers created before the move export the repository root, so the folder name is normalized.
+_cs_root="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main}"
+_cs_root="${_cs_root%/}"
+_cs_root="${_cs_root%/proxmox-helper}"
+_cs_root="${_cs_root%/bot-machine}"
+export COMMUNITY_SCRIPTS_URL="$_cs_root/proxmox-helper"
+# The bot machine itself is installed by bot-machine/install.sh, downloaded from here.
+export BOT_MACHINE_URL="${BOT_MACHINE_URL:-$_cs_root/bot-machine}"
 _cs_boot="${COMMUNITY_SCRIPTS_CORE_DIR:-$(dirname "${BASH_SOURCE[0]}")/../../../core}/core/build.func"
 # shellcheck source=/dev/null
 source "$_cs_boot" 2>/dev/null || source <(curl -fsSL "${COMMUNITY_SCRIPTS_CORE_URL:-https://raw.githubusercontent.com/community-scripts/core/main}/core/build.func")
@@ -38,8 +42,8 @@ update_alpine() {
   # botctl, the web interface and the service are refreshed by the bot machine installer.
   msg_info "Updating Bot Machine"
   local out
-  if wget -qO /tmp/bot-machine-install.sh "${COMMUNITY_SCRIPTS_URL}/install.sh" &&
-    out=$(BOT_MACHINE_URL="$COMMUNITY_SCRIPTS_URL" sh /tmp/bot-machine-install.sh update 2>&1); then
+  if wget -qO /tmp/bot-machine-install.sh "${BOT_MACHINE_URL}/install.sh" &&
+    out=$(sh /tmp/bot-machine-install.sh update 2>&1); then
     msg_ok "Updated Bot Machine"
     # A password is only shown when this run had to create one.
     grep -E 'Web interface:|Password: +[^u]' <<<"$out" || true

@@ -8,7 +8,8 @@ Run your own Discord bots on a tiny Proxmox container, and manage them from a we
 | Folder | Contents |
 | --- | --- |
 | [`jarvis/`](jarvis/) | The Jarvis bot |
-| [`bot-machine/`](bot-machine/) | Proxmox scripts ([community-scripts](https://community-scripts.org/) layout) and the web interface |
+| [`bot-machine/`](bot-machine/) | The bot machine: installer, `botctl` and web interface (any Alpine machine) |
+| [`proxmox-helper/`](proxmox-helper/) | Proxmox script ([community-scripts](https://community-scripts.org/) layout) that creates a container and installs the bot machine in it |
 
 ## Quick start
 
@@ -23,7 +24,7 @@ Run your own Discord bots on a tiny Proxmox container, and manage them from a we
 On Proxmox, one command on the host (as root) creates the container and installs everything:
 
 ```bash
-bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine/ct/bot-machine.sh)"
+bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/main/proxmox-helper/ct/bot-machine.sh)"
 ```
 
 The usual community-scripts dialogs apply (default or advanced settings, storage, network).
@@ -88,7 +89,7 @@ Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the OpenRC service
 
 **Uninstalling:** `sh install.sh uninstall` removes `botctl` and the web interface and leaves the bots running; add `--purge` to delete all bots too. Download `install.sh` first (`wget -O install.sh <url>`) or pipe it: `wget -qO- <url>/install.sh | sh -s -- uninstall`.
 
-**Settings:** the machine defaults to Alpine 3.24, 1 core, 256 MB RAM, 1 GB disk (about 350 MB used, estimated). Override with `var_*` variables, e.g. `var_ram=512 var_disk=2`. `var_web_password` (Proxmox) or `WEBUI_PASSWORD` (installer) sets the web interface password instead of a generated one. To run the script from a clone instead, use `bash discord-bots/bot-machine/ct/bot-machine.sh` (installer: `sh discord-bots/bot-machine/install.sh`).
+**Settings:** the machine defaults to Alpine 3.24, 1 core, 256 MB RAM, 1 GB disk (about 350 MB used, estimated). Override with `var_*` variables, e.g. `var_ram=512 var_disk=2`. `var_web_password` (Proxmox) or `WEBUI_PASSWORD` (installer) sets the web interface password instead of a generated one. To run the script from a clone instead, use `bash discord-bots/proxmox-helper/ct/bot-machine.sh` (installer: `sh discord-bots/bot-machine/install.sh`).
 
 ## Development
 

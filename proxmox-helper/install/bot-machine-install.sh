@@ -19,8 +19,13 @@ setup_deb_based() {
 # bot-machine/install.sh, which also works on any other Alpine machine. This script only
 # provides the container around it. Optional input: var_web_password.
 setup_alpine() {
-  local base="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine}"
-  [[ "$base" == */bot-machine ]] || base="${base%/}/bot-machine"
+  local base="${BOT_MACHINE_URL:-}" root
+  if [[ -z "$base" ]]; then
+    root="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main}"
+    root="${root%/}"
+    root="${root%/proxmox-helper}"
+    base="${root%/bot-machine}/bot-machine"
+  fi
 
   msg_info "Installing Bot Machine"
   wget -qO /tmp/bot-machine-install.sh "$base/install.sh"
