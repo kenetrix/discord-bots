@@ -35,54 +35,18 @@ update_alpine() {
     exit
   fi
 
-  # botctl lives inside the install script; extract the current version from the repository.
-  msg_info "Updating botctl"
-  local tmp
-  tmp=$(mktemp)
-  if wget -qO- "${COMMUNITY_SCRIPTS_URL}/install/bot-machine-install.sh" |
-    sed -n "/^cat <<'BOTCTL'/,/^BOTCTL/p" | sed '1d;$d' >"$tmp" && bash -n "$tmp" && [[ -s "$tmp" ]]; then
-    install -m 0755 "$tmp" /usr/local/bin/botctl
-    msg_ok "Updated botctl"
+  # botctl, the web interface and the service are refreshed by the bot machine installer.
+  msg_info "Updating Bot Machine"
+  local out
+  if wget -qO /tmp/bot-machine-install.sh "${COMMUNITY_SCRIPTS_URL}/install.sh" &&
+    out=$(BOT_MACHINE_URL="$COMMUNITY_SCRIPTS_URL" sh /tmp/bot-machine-install.sh update 2>&1); then
+    msg_ok "Updated Bot Machine"
+    # A password is only shown when this run had to create one.
+    grep -E 'Web interface:|Password: +[^u]' <<<"$out" || true
   else
-    msg_warn "Could not fetch botctl, keeping the installed version"
+    msg_warn "Could not update botctl and the web interface"
   fi
-  rm -f "$tmp"
-
-  msg_info "Updating Web Interface"
-  local webui_url="${COMMUNITY_SCRIPTS_URL}/webui"
-  install -d -m 0750 /opt/botctl-web /etc/botctl-web
-  if wget -qO /opt/botctl-web/server.js "$webui_url/server.js" && wget -qO /opt/botctl-web/index.html "$webui_url/index.html"; then
-    if [[ ! -f /etc/botctl-web/password ]]; then
-      head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20 >/etc/botctl-web/password
-      chmod 0600 /etc/botctl-web/password
-      NEW_WEBUI=1
-    fi
-    if [[ ! -f /etc/init.d/botctl-web ]]; then
-      cat <<'WEBSERVICE' >/etc/init.d/botctl-web
-#!/sbin/openrc-run
-description="botctl web interface"
-command="/usr/bin/node"
-command_args="/opt/botctl-web/server.js"
-command_background="yes"
-pidfile="/run/botctl-web.pid"
-output_log="/var/log/botctl-web.log"
-error_log="/var/log/botctl-web.log"
-
-depend() {
-  need net
-}
-WEBSERVICE
-      chmod 0755 /etc/init.d/botctl-web
-      rc-update add botctl-web default >/dev/null
-    fi
-    rc-service botctl-web restart >/dev/null 2>&1 || rc-service botctl-web start >/dev/null 2>&1 || true
-    msg_ok "Updated Web Interface"
-    if [[ -n "${NEW_WEBUI:-}" ]]; then
-      echo -e "${INFO}Web interface: http://$(hostname -i | awk '{print $1}'):8080, password: $(cat /etc/botctl-web/password)"
-    fi
-  else
-    msg_warn "Could not update the web interface"
-  fi
+  rm -f /tmp/bot-machine-install.sh
 
   msg_info "Updating Bots"
   $STD botctl update-all

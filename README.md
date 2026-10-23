@@ -18,13 +18,23 @@ Run your own Discord bots on a tiny Proxmox container, and manage them from a we
 2. Under **Bot**: *Reset Token* and note the token. Under *Privileged Gateway Intents*, enable **Server Members Intent**.
 3. Under **General Information**, note the *Application ID*.
 
-**2. Create the bot machine** (on the Proxmox host, as root)
+**2. Create the bot machine**
+
+On Proxmox, one command on the host (as root) creates the container and installs everything:
 
 ```bash
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine/ct/bot-machine.sh)"
 ```
 
-The usual community-scripts dialogs apply (default or advanced settings, storage, network). At the end you get the address and password of the web interface.
+The usual community-scripts dialogs apply (default or advanced settings, storage, network).
+
+On any other Alpine Linux machine or container, as root, the installer does the same without Proxmox (it installs Node.js and git, `botctl`, the web interface and its service):
+
+```bash
+sh -c "$(wget -qO- https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine/install.sh)"
+```
+
+Both end with the address and password of the web interface.
 
 **3. Add Jarvis**
 
@@ -74,9 +84,11 @@ botctl list
 
 Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the OpenRC service `bot.<name>` and starts after a reboot. Any repo with a `package.json` and a `start` script works; an optional `deploy-commands` script runs on `start` and `update`.
 
-**Updating:** run `update` inside the container. It refreshes `botctl` and the web interface, updates all bots and the Alpine packages. If it fails, `botctl update-all` still works.
+**Updating:** on a Proxmox container run `update` inside it: it refreshes `botctl` and the web interface, updates all bots and the Alpine packages. On any machine, `botctl self-update` (or running the installer again) refreshes `botctl` and the web interface, and `botctl update-all` updates the bots.
 
-**Settings:** the machine defaults to Alpine 3.24, 1 core, 256 MB RAM, 1 GB disk (about 350 MB used, estimated). Override with `var_*` variables, e.g. `var_ram=512 var_disk=2`. `var_web_password` sets the web interface password instead of a generated one. To run the script from a clone instead, use `bash discord-bots/bot-machine/ct/bot-machine.sh`.
+**Uninstalling:** `sh install.sh uninstall` removes `botctl` and the web interface and leaves the bots running; add `--purge` to delete all bots too. Download `install.sh` first (`wget -O install.sh <url>`) or pipe it: `wget -qO- <url>/install.sh | sh -s -- uninstall`.
+
+**Settings:** the machine defaults to Alpine 3.24, 1 core, 256 MB RAM, 1 GB disk (about 350 MB used, estimated). Override with `var_*` variables, e.g. `var_ram=512 var_disk=2`. `var_web_password` (Proxmox) or `WEBUI_PASSWORD` (installer) sets the web interface password instead of a generated one. To run the script from a clone instead, use `bash discord-bots/bot-machine/ct/bot-machine.sh` (installer: `sh discord-bots/bot-machine/install.sh`).
 
 ## Development
 
