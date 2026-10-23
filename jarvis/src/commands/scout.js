@@ -1,5 +1,5 @@
 const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const { REGIONS, parseRiotId, getPlayer, getCounters, getRolePools, getChampionTags } = require('../scout/opgg');
+const { REGIONS, parseRiotId, opggUrl, getPlayer, getCounters, getRolePools, getChampionTags } = require('../scout/opgg');
 const { recommendBans, predictPicks, suggestComp, gamePlan } = require('../scout/analysis');
 
 const PLAYER_OPTIONS = ['player1', 'player2', 'player3', 'player4', 'player5'];
@@ -12,6 +12,7 @@ const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPO
 
 /** What went wrong for one player, in words a user can act on. */
 function failureReason(err, region) {
+  if (err.triedTags) return `no player with this name and tag ${err.triedTags.map((t) => `#${t}`).join(', ')} in ${region}. Add the tag (Name#TAG).`;
   if (err.kind === 'not_found') return `not found on OP.GG (${region}). Check the name, the tag and the region.`;
   if (err.kind === 'rate_limited') return 'OP.GG is limiting requests right now.';
   if (err.kind === 'unavailable') return 'OP.GG did not answer.';
@@ -26,40 +27,52 @@ function nobodyFound(errors, failed) {
   return `Could not scout anyone.\n${failed.join('\n')}`;
 }
 
-function playerLine(player, role) {
+const ROLE_ORDER = Object.keys(ROLE_LABEL);
+
+const escapeMarkdown = (text) => text.replace(/[\\[\]()*_~`|>]/g, '\\$&');
+
+/** "MASTER 26 LP, 51 % WR" -> "Master 26 LP": the rank without the record, which the report leaves out. */
+function shortRank(rank) {
+  if (!rank) return 'Unranked';
+  const [tier, ...rest] = rank.split(',')[0].split(' ');
+  return [tier.charAt(0) + tier.slice(1).toLowerCase(), ...rest].join(' ');
+}
+
+/** Two lines per player: role, linked name and rank, then the three most played champions. */
+function playerLine(player, role, region) {
   const pool = [...player.champions]
     .sort((a, b) => b.games - a.games)
     .slice(0, 3)
-    .map((c) => `${c.name} ${c.games}g/${Math.round((c.wins / c.games) * 100)}%`)
-    .join(', ');
-  return `**${player.riotId}** (${ROLE_LABEL[role] ?? '?'}, ${player.rank ?? 'unranked'})\n${pool || 'No recent games'}`;
+    .map((c) => `${c.name} ${c.games}`)
+    .join(' · ');
+  const name = `[${escapeMarkdown(player.riotId)}](${opggUrl(player.riotId, region)})${player.guessedTag ? '\\*' : ''}`;
+  return `**${ROLE_LABEL[role] ?? '?'}** · ${name} · ${shortRank(player.rank)}\n└ ${pool || 'no ranked games this season'}`;
+}
+
+function compLine(c) {
+  const role = `**${ROLE_LABEL[c.role]}**`;
+  if (!c.pick) return `${role} no counter data${c.against ? ` vs ${c.against}` : ''}`;
+  return `${role} ${c.pick.name}${c.alternative ? ` or ${c.alternative.name}` : ''} *vs ${c.against}*`;
 }
 
 function buildEmbed({ region, players, picks, failed, bans, alternatives, comp, plan }) {
   const roleOf = new Map(picks.map((p) => [p.player, p.role]));
-  const banLine = (b, i) => `${i + 1}. **${b.champion}** (${b.player}: ${b.games} games, ${b.winRate} % WR)`;
-  const compLine = (c) => {
-    if (!c.pick) return `${ROLE_LABEL[c.role]}: no counter data${c.against ? ` vs ${c.against}` : ''}`;
-    const alt = c.alternative ? `, alt. ${c.alternative.name}` : '';
-    return `${ROLE_LABEL[c.role]}: **${c.pick.name}**${alt} (vs ${c.against})`;
-  };
+  const byRole = [...players].sort((a, b) => ROLE_ORDER.indexOf(roleOf.get(a.riotId)) - ROLE_ORDER.indexOf(roleOf.get(b.riotId)));
+  const banList = bans.map((b) => `**${b.champion}**`).join(' · ') || 'not enough data';
+  const backup = alternatives.length ? `\nBackup: ${alternatives.map((b) => b.champion).join(' · ')}` : '';
 
   const embed = new EmbedBuilder()
-    .setTitle('Clash scouting report')
+    .setTitle(`Clash scout · ${region}`)
     .setColor(0xc89b3c)
+    .setDescription(`🚫 Ban: ${banList}${backup}`)
     .addFields(
-      { name: 'Enemy team', value: players.map((p) => playerLine(p, roleOf.get(p.riotId))).join('\n') },
-      { name: 'Ban these', value: bans.map(banLine).join('\n') || 'Not enough data' },
-    )
-    .setFooter({ text: `Data: OP.GG (${region}). Ranked games of this season; draft carefully.` })
-    .setTimestamp();
-  if (alternatives.length) {
-    embed.addFields({ name: 'Alternative bans', value: alternatives.map((b) => `**${b.champion}** (${b.player})`).join(', ') });
-  }
-  embed.addFields({ name: 'Suggested team', value: comp.map(compLine).join('\n') });
-  if (plan.length) embed.addFields({ name: 'Game plan', value: plan.map((p) => `- ${p}`).join('\n') });
-  if (failed.length) embed.addFields({ name: 'Not scouted', value: failed.join('\n') });
-  return embed;
+      { name: 'Enemy team', value: byRole.map((p) => playerLine(p, roleOf.get(p.riotId), region)).join('\n') },
+      { name: 'Pick against them', value: comp.map(compLine).join('\n') },
+    );
+  if (plan.length) embed.addFields({ name: 'Game plan', value: plan.slice(0, 2).map((p) => `• ${p}`).join('\n') });
+  if (failed.length) embed.addFields({ name: 'Not scouted', value: failed.join('\n').slice(0, 1024) });
+  const guessed = players.some((p) => p.guessedTag) ? ' · * tag guessed' : '';
+  return embed.setFooter({ text: `OP.GG · numbers are ranked games this season${guessed}` }).setTimestamp();
 }
 
 /** Looks the players up and posts the report. */
@@ -101,7 +114,7 @@ module.exports = {
       .setDescription('Scout a Clash enemy team and post ban and pick advice in your voice channel')
       .setDMPermission(false);
     PLAYER_OPTIONS.forEach((name, i) =>
-      builder.addStringOption((o) => o.setName(name).setDescription(`Riot ID of enemy ${i + 1}, e.g. Name#EUW`).setRequired(i === 0).setMaxLength(30)),
+      builder.addStringOption((o) => o.setName(name).setDescription(`Riot ID of enemy ${i + 1}, e.g. Name#EUW (tag optional)`).setRequired(i === 0).setMaxLength(30)),
     );
     builder.addStringOption((o) =>
       o
@@ -116,7 +129,7 @@ module.exports = {
     const ids = PLAYER_OPTIONS.map((name) => interaction.options.getString(name)).filter(Boolean);
     const invalid = ids.filter((id) => !parseRiotId(id));
     if (invalid.length) {
-      return interaction.reply({ content: `Not a Riot ID like Name#TAG: ${invalid.join(', ')}`, flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: `Not a Riot ID like Name#TAG or a name of 3 to 16 characters: ${invalid.join(', ')}`, flags: MessageFlags.Ephemeral });
     }
     const region = interaction.options.getString('region') ?? DEFAULT_REGION;
 
