@@ -6,7 +6,13 @@ const commands = require('./commands');
 
 const client = new Client({
   // No MessageContent intent needed: cleanup only reads metadata (author, time, pin).
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildMessages,
+    // Needed to find the voice channel of whoever runs /scout.
+    GatewayIntentBits.GuildVoiceStates,
+  ],
 });
 
 const byName = new Map(commands.map((c) => [c.data.name, c]));

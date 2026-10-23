@@ -2,7 +2,7 @@
 
 Run your own Discord bots on a tiny Proxmox container, and manage them from a web page.
 
-- **Jarvis** is the first bot: roles, moderation and scheduled message clean-up (Node.js, discord.js v14).
+- **Jarvis** is the first bot: roles, moderation, scheduled message clean-up and League of Legends Clash scouting (Node.js, discord.js v14).
 - **Bot machine** is a Proxmox script that creates a small Alpine LXC (256 MB RAM, 1 GB disk) for any number of bots, with a web interface to start, stop, update and configure them.
 
 | Folder | Contents |
@@ -62,10 +62,13 @@ All commands are slash commands; Discord's default permissions decide who sees t
 | `/timeout add\|remove` | Timeout, e.g. `10m`, `2h`, `1d` (max. 28 days) | Timeout Members |
 | `/clean` | Delete messages in this channel now | Manage Messages |
 | `/cleaner add\|add-voice\|list\|remove\|run` | Scheduled clean-up jobs | Manage Messages |
+| `/scout` | Scout a Clash enemy team and post ban and pick advice | Everyone |
 
 **`/clean`** only reaches messages younger than 14 days. Options: `amount` (1 to 500), `user`, `later_than` (only the last X hours), `keep_latest` (keep the newest N messages) and `keep_pinned` (default: yes).
 
 **`/cleaner`** runs jobs on a schedule: `hourly`, `daily` (04:00), `weekly` (Mondays, 04:00) or a cron expression like `30 3 * * *`. `add-voice` covers the chats of all voice channels of the server. Options: `older_than_hours`, `keep_latest` and `keep_pinned`. Messages older than 14 days are deleted one by one, up to 300 per run.
+
+**`/scout`** takes up to five Riot IDs (`Name#TAG`, e.g. from the Clash scouting phase) and an optional `region` (default `EUW`, or `SCOUT_REGION`). Jarvis looks the players up on [OP.GG](https://op.gg) through its public [MCP server](https://github.com/opgginc/opgg-mcp) (no API key needed) and posts a report into the text chat of the voice channel you are in, or into the current channel if you are not in one. The report lists each enemy's rank, role and most played champions, five bans with three alternatives, a counter pick per role and a short game plan. Bans favour champions a player has many games and a high win rate on, with at most three bans aimed at one player.
 
 ## Running the bot machine
 
