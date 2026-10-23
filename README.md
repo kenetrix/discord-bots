@@ -15,10 +15,8 @@ All commands are slash commands. Who can see them is controlled by Discord's def
 | --- | --- | --- |
 | `/role add\|remove` | Give or take a role | Manage Roles |
 | `/rolepanel` | Panel with up to 10 buttons that let members assign roles to themselves | Manage Roles |
-| `/kick` | Kick a member | Kick Members |
 | `/ban add\|remove` | Ban (optionally deleting the last 7 days of messages) or unban | Ban Members |
 | `/timeout add\|remove` | Timeout, e.g. `10m`, `2h`, `1d` (max. 28 days) | Timeout Members |
-| `/warn add\|list\|remove\|clear` | Warnings, stored in SQLite | Timeout Members |
 | `/purge` | Delete the last 1 to 500 messages, optionally only from one user | Manage Messages |
 | `/cleaner add\|list\|remove\|run` | Clear channels on a schedule | Manage Messages |
 | `/config modlog` | Set the moderation log channel | Manage Server |
