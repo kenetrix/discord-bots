@@ -12,6 +12,7 @@ const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPO
 
 /** What went wrong for one player, in words a user can act on. */
 function failureReason(err, region) {
+  if (err.triedTags) return `no player with this name and tag ${err.triedTags.map((t) => `#${t}`).join(', ')} in ${region}. Add the tag (Name#TAG).`;
   if (err.kind === 'not_found') return `not found on OP.GG (${region}). Check the name, the tag and the region.`;
   if (err.kind === 'rate_limited') return 'OP.GG is limiting requests right now.';
   if (err.kind === 'unavailable') return 'OP.GG did not answer.';
@@ -32,7 +33,8 @@ function playerLine(player, role) {
     .slice(0, 3)
     .map((c) => `${c.name} ${c.games}g/${Math.round((c.wins / c.games) * 100)}%`)
     .join(', ');
-  return `**${player.riotId}** (${ROLE_LABEL[role] ?? '?'}, ${player.rank ?? 'unranked'})\n${pool || 'No recent games'}`;
+  const guessed = player.guessedTag ? ', tag guessed' : '';
+  return `**${player.riotId}** (${ROLE_LABEL[role] ?? '?'}, ${player.rank ?? 'unranked'}${guessed})\n${pool || 'No recent games'}`;
 }
 
 function buildEmbed({ region, players, picks, failed, bans, alternatives, comp, plan }) {
@@ -101,7 +103,7 @@ module.exports = {
       .setDescription('Scout a Clash enemy team and post ban and pick advice in your voice channel')
       .setDMPermission(false);
     PLAYER_OPTIONS.forEach((name, i) =>
-      builder.addStringOption((o) => o.setName(name).setDescription(`Riot ID of enemy ${i + 1}, e.g. Name#EUW`).setRequired(i === 0).setMaxLength(30)),
+      builder.addStringOption((o) => o.setName(name).setDescription(`Riot ID of enemy ${i + 1}, e.g. Name#EUW (tag optional)`).setRequired(i === 0).setMaxLength(30)),
     );
     builder.addStringOption((o) =>
       o
@@ -116,7 +118,7 @@ module.exports = {
     const ids = PLAYER_OPTIONS.map((name) => interaction.options.getString(name)).filter(Boolean);
     const invalid = ids.filter((id) => !parseRiotId(id));
     if (invalid.length) {
-      return interaction.reply({ content: `Not a Riot ID like Name#TAG: ${invalid.join(', ')}`, flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: `Not a Riot ID like Name#TAG or a name of 3 to 16 characters: ${invalid.join(', ')}`, flags: MessageFlags.Ephemeral });
     }
     const region = interaction.options.getString('region') ?? DEFAULT_REGION;
 

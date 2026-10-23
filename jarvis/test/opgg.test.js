@@ -77,3 +77,32 @@ test('cache shares loads, keeps results and forgets failures', async () => {
   await cache.get('c', load);
   assert.equal(await cache.get('a', load), 4, 'oldest entry is dropped beyond maxEntries');
 });
+
+test('a name without tag is tried with the default tags of the region', async (t) => {
+  const { getPlayer, defaultTags } = require('../src/scout/opgg');
+  assert.deepEqual(defaultTags('EUW'), ['EUW', 'EUW1']);
+  assert.deepEqual(defaultTags('NA'), ['NA1', 'NA']);
+
+  const realFetch = global.fetch;
+  t.after(() => {
+    global.fetch = realFetch;
+  });
+  const asked = [];
+  const rpc = (body) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
+  global.fetch = async (url, init) => {
+    const body = JSON.parse(init.body);
+    if (body.method === 'initialize') return rpc({ jsonrpc: '2.0', id: body.id, result: {} });
+    if (body.method === 'notifications/initialized') return new Response(null, { status: 202 });
+    const { name, arguments: args } = body.params;
+    if (name === 'lol_get_summoner_profile') asked.push(args.tag_line);
+    if (args.game_name !== 'Bare' || args.tag_line !== 'NA') return rpc({ jsonrpc: '2.0', id: body.id, error: { code: -32600, message: 'Summoner not found' } });
+    const text = name === 'lol_get_summoner_profile' ? '{"data":{"summoner":{"game_name":"Bare","tagline":"NA"}}}' : '{"data":{"game_history":[]}}';
+    return rpc({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text }] } });
+  };
+
+  const player = await getPlayer('Bare', 'NA');
+  assert.deepEqual(asked.splice(0), ['NA1', 'NA']);
+  assert.equal(player.riotId, 'Bare#NA');
+  assert.equal(player.guessedTag, true);
+  await assert.rejects(getPlayer('Nobody', 'NA'), (err) => err.kind === 'not_found' && err.triedTags.join() === 'NA1,NA');
+});

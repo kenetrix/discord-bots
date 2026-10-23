@@ -20,10 +20,33 @@ const POSITION_ALIASES = {
   UTILITY: 'SUPPORT',
 };
 
-/** Splits "Name#TAG" (spaces around # allowed) into its parts, or returns null. */
+/** Splits "Name#TAG" (spaces around # allowed) into its parts; a bare name gets tagLine null. Returns null for anything else. */
 function parseRiotId(input) {
-  const match = /^\s*(.{3,16}?)\s*#\s*([^\s#]{2,5})\s*$/u.exec(input ?? '');
-  return match ? { gameName: match[1], tagLine: match[2] } : null;
+  const match = /^\s*([^#]{3,16}?)\s*(?:#\s*([^\s#]{2,5}))?\s*$/u.exec(input ?? '');
+  return match ? { gameName: match[1], tagLine: match[2] ?? null } : null;
+}
+
+// Tags Riot gives new accounts per region. OP.GG has no name search, so a name without tag is tried with these.
+const DEFAULT_TAGS = {
+  EUW: ['EUW'],
+  EUNE: ['EUNE'],
+  NA: ['NA1'],
+  KR: ['KR1'],
+  BR: ['BR1'],
+  LAN: ['LAN'],
+  LAS: ['LAS'],
+  OCE: ['OCE', 'OC1'],
+  TR: ['TR1'],
+  RU: ['RU', 'RU1'],
+  JP: ['JP1'],
+  ME: ['ME1'],
+  SEA: ['SG2', 'SEA'],
+  TW: ['TW2'],
+  VN: ['VN2'],
+};
+
+function defaultTags(region) {
+  return [...new Set([...(DEFAULT_TAGS[region] ?? []), region, `${region}1`])].slice(0, 3);
 }
 
 const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
@@ -69,10 +92,30 @@ function normalizeRoles(games) {
   return [...counts].map(([role, count]) => ({ role, games: count }));
 }
 
-/** Rank, role stats and champion pool of one player, cached for 30 minutes. Throws an OpggError when OP.GG does not know them. */
+/**
+ * Rank, role stats and champion pool of one player, cached for 30 minutes. Takes Name#TAG or a bare name,
+ * which is tried with the region's default tags. Throws an OpggError when OP.GG does not know the player.
+ */
 async function getPlayer(riotId, region) {
   const id = parseRiotId(riotId);
   if (!id) throw new Error(`"${riotId}" is not a Riot ID like Name#TAG.`);
+  if (id.tagLine) return getTaggedPlayer(id, region);
+
+  // No tag: try the region's default tags one after another and take the first account that exists.
+  const tried = defaultTags(region);
+  for (const tagLine of tried) {
+    try {
+      return { ...(await getTaggedPlayer({ gameName: id.gameName, tagLine }, region)), guessedTag: true };
+    } catch (err) {
+      if (err.kind !== 'not_found') throw err;
+    }
+  }
+  const err = new OpggError('not_found', `No player ${id.gameName} with tag ${tried.join(', ')}`);
+  err.triedTags = tried;
+  throw err;
+}
+
+function getTaggedPlayer(id, region) {
   return playerCache.get(`${region}:${id.gameName}#${id.tagLine}`.toLowerCase(), () => fetchPlayer(id, region));
 }
 
@@ -168,4 +211,4 @@ async function getChampionTags(names) {
   return new Map(names.filter((name) => tagCache.has(name)).map((name) => [name, tagCache.get(name)]));
 }
 
-module.exports = { REGIONS, parseRiotId, championKey, normalizeRank, normalizeRoles, normalizeChampions, getPlayer, getCounters, getRolePools, getChampionTags };
+module.exports = { REGIONS, parseRiotId, defaultTags, championKey, normalizeRank, normalizeRoles, normalizeChampions, getPlayer, getCounters, getRolePools, getChampionTags };

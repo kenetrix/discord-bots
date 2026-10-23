@@ -18,9 +18,11 @@ const team = [
   player('Sup#EUW', { SUPPORT: 35, ADC: 10 }, [['Thresh', 20, 12], ['Nautilus', 12, 6]]),
 ];
 
-test('parseRiotId accepts Name#TAG with spaces', () => {
+test('parseRiotId accepts Name#TAG with spaces and a bare name', () => {
   assert.deepEqual(parseRiotId('Some Name # EUW'), { gameName: 'Some Name', tagLine: 'EUW' });
-  assert.equal(parseRiotId('NoTag'), null);
+  assert.deepEqual(parseRiotId(' NoTag '), { gameName: 'NoTag', tagLine: null });
+  assert.equal(parseRiotId('ab'), null);
+  assert.equal(parseRiotId('a#b#c'), null);
 });
 
 test('bans target comfort picks, not small lucky samples', () => {
