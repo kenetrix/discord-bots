@@ -4,7 +4,7 @@ require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true
 function required(name) {
   const value = process.env[name];
   if (!value) {
-    console.error(`Fehlende Umgebungsvariable: ${name} (siehe .env.example)`);
+    console.error(`Missing environment variable: ${name} (see .env.example)`);
     process.exit(1);
   }
   return value;

@@ -13,15 +13,15 @@ function ephemeral(interaction, content) {
  */
 function checkHierarchy(interaction, member) {
   const me = interaction.guild.members.me;
-  if (member.id === interaction.user.id) return 'Du kannst dich nicht selbst moderieren.';
-  if (member.id === interaction.guild.ownerId) return 'Der Server-Owner kann nicht moderiert werden.';
-  if (member.id === me.id) return 'Ich kann mich nicht selbst moderieren.';
+  if (member.id === interaction.user.id) return 'You cannot moderate yourself.';
+  if (member.id === interaction.guild.ownerId) return 'The server owner cannot be moderated.';
+  if (member.id === me.id) return 'I cannot moderate myself.';
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   if (!isOwner && member.roles.highest.position >= interaction.member.roles.highest.position) {
-    return 'Dieses Mitglied hat eine gleich hohe oder höhere Rolle als du.';
+    return 'This member has a role equal to or higher than yours.';
   }
   if (member.roles.highest.position >= me.roles.highest.position) {
-    return 'Meine höchste Rolle steht nicht über der Rolle dieses Mitglieds.';
+    return 'My highest role is not above this member\'s highest role.';
   }
   return null;
 }
@@ -29,12 +29,12 @@ function checkHierarchy(interaction, member) {
 /** Checks whether the bot (and the moderator) may assign a role. */
 function checkRole(interaction, role) {
   const me = interaction.guild.members.me;
-  if (role.managed) return `${role} wird von einer Integration verwaltet und kann nicht vergeben werden.`;
-  if (role.id === interaction.guild.id) return '@everyone kann nicht vergeben werden.';
-  if (role.position >= me.roles.highest.position) return `${role} steht über meiner höchsten Rolle.`;
+  if (role.managed) return `${role} is managed by an integration and cannot be assigned.`;
+  if (role.id === interaction.guild.id) return '@everyone cannot be assigned.';
+  if (role.position >= me.roles.highest.position) return `${role} is above my highest role.`;
   const isOwner = interaction.user.id === interaction.guild.ownerId;
   if (interaction.member && !isOwner && role.position >= interaction.member.roles.highest.position) {
-    return `${role} steht über deiner höchsten Rolle.`;
+    return `${role} is above your highest role.`;
   }
   return null;
 }

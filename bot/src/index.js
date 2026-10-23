@@ -12,7 +12,7 @@ const client = new Client({
 const byName = new Map(commands.map((c) => [c.data.name, c]));
 
 client.once(Events.ClientReady, (c) => {
-  console.log(`Eingeloggt als ${c.user.tag} auf ${c.guilds.cache.size} Server(n).`);
+  console.log(`Jarvis logged in as ${c.user.tag} on ${c.guilds.cache.size} server(s).`);
   startScheduler(c);
 });
 
@@ -27,8 +27,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
     }
   } catch (err) {
-    console.error(`Fehler bei ${interaction.commandName ?? interaction.customId}:`, err);
-    const content = 'Da ist etwas schiefgelaufen. Prüfe meine Rechte und die Rollen-Reihenfolge.';
+    console.error(`Error in ${interaction.commandName ?? interaction.customId}:`, err);
+    const content = 'Something went wrong. Check my permissions and the role order.';
     const reply = interaction.deferred || interaction.replied
       ? interaction.editReply({ content })
       : interaction.reply({ content, flags: MessageFlags.Ephemeral });
@@ -37,7 +37,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 function shutdown(signal) {
-  console.log(`${signal} empfangen, fahre herunter.`);
+  console.log(`${signal} received, shutting down.`);
   client.destroy();
   db.close();
   process.exit(0);
