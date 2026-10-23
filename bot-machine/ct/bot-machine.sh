@@ -21,15 +21,8 @@ var_version="${var_version:-3.24}"
 var_unprivileged="${var_unprivileged:-1}"
 
 # Application settings. The install script reads them from the environment; all are optional.
-# Credentials are never stored in the script or in the defaults file, pass them per run.
-export var_bot_name="${var_bot_name:-jarvis}"
-export var_bot_repo="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
-export var_bot_path="${var_bot_path-jarvis}"
-export var_bot_repo_token="${var_bot_repo_token:-}"
+# No bot is installed by default: add bots afterwards with the web interface or botctl.
 export var_web_password="${var_web_password:-}"
-export var_discord_token="${var_discord_token:-}"
-export var_discord_client_id="${var_discord_client_id:-}"
-export var_discord_guild_id="${var_discord_guild_id:-}"
 
 header_info "$APP"
 variables
@@ -120,11 +113,5 @@ echo -e "${INFO}${YW}Web interface:${CL} ${BGN}http://${IP:-<container-ip>}:8080
 if [[ -z "$var_web_password" ]]; then
   echo -e "${TAB}${YW}Password:${CL} ${BGN}$(pct exec "$CTID" -- cat /etc/botctl-web/password 2>/dev/null)${CL}"
 fi
-echo -e "${INFO}${YW}Manage the bots inside the container (pct enter ${CTID}) with:${CL}"
-echo -e "${TAB}${BGN}botctl list${CL}"
-if [[ -z "$var_discord_token" || -z "$var_discord_client_id" ]]; then
-  echo -e "${TAB}${BGN}botctl env ${var_bot_name}${CL}"
-  echo -e "${TAB}${BGN}botctl start ${var_bot_name}${CL}"
-else
-  echo -e "${TAB}${BGN}botctl logs ${var_bot_name}${CL}"
-fi
+echo -e "${INFO}${YW}No bot is installed yet. Add one in the web interface, or inside the container (pct enter ${CTID}):${CL}"
+echo -e "${TAB}${BGN}botctl add <name> <git-url> --path <subfolder>${CL}"

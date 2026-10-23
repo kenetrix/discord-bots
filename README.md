@@ -55,36 +55,23 @@ bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/ma
 
 Defaults: Alpine 3.24, 1 core, 256 MB RAM, 1 GB disk, unprivileged. The install is lean: no compiler is needed because `better-sqlite3` ships prebuilt binaries for Alpine (musl). Node.js, git, bash and the bot's `node_modules` (about 55 MB) should add up to roughly 350 MB on disk (estimate, not measured), so 1 GB leaves room for updates and the database. The scripts support Alpine only. Override them with the usual `var_*` variables, for example `var_ram=512 var_disk=2 bash discord-bots/bot-machine/ct/bot-machine.sh`.
 
-The install script sets up Node.js, git, `botctl` and the first bot. It reads these optional inputs from the environment; nothing is stored in the repo or in the defaults file:
+The install script sets up Node.js, git, `botctl` and the web interface. **No bot is installed**: add your bots afterwards in the web interface or with `botctl add` (section 3). The only input is optional and is read from the environment; nothing is stored in the repo or in the defaults file:
 
 | Variable | Meaning | Default |
 | --- | --- | --- |
-| `var_bot_name` | Name of the first bot | `jarvis` |
-| `var_bot_repo` | Git URL of the bot | this repository |
-| `var_bot_path` | Subfolder with the `package.json` | `jarvis` |
 | `var_web_password` | Password of the web interface | generated, stored in `/etc/botctl-web/password` |
-| `var_bot_repo_token` | GitHub token for a private repo (stored in the bot's `.git/config`) | none |
-| `var_discord_token`, `var_discord_client_id`, `var_discord_guild_id` | Written to the bot's `.env`; with token and client ID the bot is started right away | none |
-
-Example for a fully unattended setup:
-
-```bash
-var_bot_repo_token=github_pat_... var_discord_token=... var_discord_client_id=... \
-  bash discord-bots/bot-machine/ct/bot-machine.sh
-```
-
-Without Discord credentials the container is still created; finish with `botctl env jarvis` and `botctl start jarvis` as described below.
 
 ### Web interface
 
-The container also runs a small web interface (`bot-machine/webui/`, Node.js built-ins only) on port 8080: `http://<container-ip>:8080`. It shows all bots with their status and offers start, stop, restart, update, logs, a form for the bot's environment variables (secret values such as the token are write-only and never shown again), a button that copies the Discord invite link to the clipboard, adding a bot from a Git URL, deleting a bot and "Update all". The password is printed at the end of the installation and stored in `/etc/botctl-web/password`; after five wrong attempts a client is blocked for five minutes.
+The container also runs a small web interface (`bot-machine/webui/`, Node.js built-ins only) on port 8080: `http://<container-ip>:8080`. It shows all bots with their status and offers start, stop, restart, update, logs, a form for the bot's environment variables (secret values such as the token are write-only and never shown again), a button that copies the Discord invite link to the clipboard, adding a bot from a Git URL (for Jarvis: this repository's URL and the subfolder `jarvis`), deleting a bot and "Update all". The password is printed at the end of the installation and stored in `/etc/botctl-web/password`; after five wrong attempts a client is blocked for five minutes.
 
 The interface runs as root inside the container because `botctl` needs it and speaks plain HTTP, so only expose it in a trusted network or behind a reverse proxy with HTTPS. Restart it with `rc-service botctl-web restart`.
 
 ## 3. Manage bots (inside the container, `pct enter <CTID>`)
 
 ```bash
-botctl add <name> https://<token>@github.com/<user>/<repo>.git --path <subfolder>
+botctl add jarvis https://github.com/kenetrix/discord-bots.git --path jarvis
+                         # for a private repo: https://<token>@github.com/<user>/<repo>.git
 botctl env jarvis        # enter DISCORD_TOKEN, CLIENT_ID, GUILD_ID
 botctl start jarvis      # registers slash commands and starts the bot
 botctl logs jarvis

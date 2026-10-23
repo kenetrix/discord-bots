@@ -280,37 +280,7 @@ BOTCTL
   chmod 0755 /usr/local/bin/botctl
   msg_ok "Installed botctl"
 
-  # Optional inputs, exported by ct/bot-machine.sh: var_bot_name, var_bot_repo, var_bot_path,
-  # var_bot_repo_token, var_web_password, var_discord_token, var_discord_client_id, var_discord_guild_id
-  BOT_NAME="${var_bot_name:-jarvis}"
-  BOT_REPO="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
-  BOT_PATH="${var_bot_path-bot}"
-  if [[ -n "${var_bot_repo_token:-}" ]]; then
-    BOT_REPO="${BOT_REPO/https:\/\//https:\/\/x-access-token:${var_bot_repo_token}@}"
-  fi
-
-  msg_info "Installing Bot ${BOT_NAME}"
-  if botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
-    msg_ok "Installed Bot ${BOT_NAME}"
-
-    if [[ -n "${var_discord_token:-}" && -n "${var_discord_client_id:-}" ]]; then
-      msg_info "Configuring and Starting ${BOT_NAME}"
-      printf '%s\n' "$var_discord_token" | botctl set "$BOT_NAME" DISCORD_TOKEN
-      printf '%s\n' "$var_discord_client_id" | botctl set "$BOT_NAME" CLIENT_ID
-      [[ -n "${var_discord_guild_id:-}" ]] && printf '%s\n' "$var_discord_guild_id" | botctl set "$BOT_NAME" GUILD_ID
-      if $STD botctl start "$BOT_NAME"; then
-        msg_ok "Configured and Started ${BOT_NAME}"
-      else
-        msg_warn "Could not start ${BOT_NAME}; check the values with: botctl env ${BOT_NAME}"
-      fi
-    else
-      msg_warn "No Discord credentials given. Finish with: botctl env ${BOT_NAME} && botctl start ${BOT_NAME}"
-    fi
-  else
-    msg_warn "Could not install bot ${BOT_NAME} from ${BOT_REPO//\/\/*@/\/\/***@}. Add it later with: botctl add <name> <git-url> --path <subfolder>"
-  fi
-
-  # Web interface for botctl (webui/ in this repository). Optional input: var_web_password.
+  # Web interface for botctl (bot-machine/webui/ in this repository). Optional input: var_web_password.
   msg_info "Installing Web Interface"
   WEBUI_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine}"
   [[ "$WEBUI_URL" == */bot-machine ]] || WEBUI_URL="${WEBUI_URL%/}/bot-machine"
