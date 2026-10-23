@@ -28,6 +28,10 @@
   button { font: inherit; padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text); cursor: pointer; }
   button:hover { border-color: var(--accent); }
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  a.btn { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text); text-decoration: none; }
+  a.btn:hover { border-color: var(--muted); }
+  button.icon { padding: 5px 8px; }
+  .invite { gap: 4px; }
   button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
   button.ghost:hover { color: var(--text); border-color: var(--line); }
   button.danger { color: var(--bad); }
@@ -272,12 +276,23 @@ function botView(bot) {
   );
 
   const invite = bot.inviteUrl
-    ? el('button', {
-        className: 'ghost',
-        textContent: 'Copy invite link',
-        title: 'Copy the Discord invite link of this bot',
-        onclick: async () => toast((await copyText(bot.inviteUrl)) ? 'Invite link copied.' : 'Copying failed.'),
-      })
+    ? el('div', { className: 'row invite' },
+        el('button', {
+          className: 'ghost icon',
+          textContent: '\u{1F4CB}',
+          title: 'Copy the Discord invite link',
+          'aria-label': 'Copy invite link',
+          onclick: async () => toast((await copyText(bot.inviteUrl)) ? 'Invite link copied.' : 'Copying failed.'),
+        }),
+        el('a', {
+          className: 'btn',
+          textContent: 'Invite',
+          href: bot.inviteUrl,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+          title: 'Open the Discord invite page',
+        }),
+      )
     : null;
 
   return el('div', { className: 'card' },
