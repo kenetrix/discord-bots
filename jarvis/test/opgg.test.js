@@ -64,3 +64,16 @@ test('champion names become OP.GG keys', () => {
   assert.equal(championKey('Nunu & Willump'), 'NUNU_WILLUMP');
   assert.equal(championKey('Dr. Mundo'), 'DR_MUNDO');
 });
+
+test('cache shares loads, keeps results and forgets failures', async () => {
+  const { TtlCache } = require('../src/scout/cache');
+  const cache = new TtlCache(60e3, 2);
+  let loads = 0;
+  const load = async () => ++loads;
+  assert.deepEqual(await Promise.all([cache.get('a', load), cache.get('a', load)]), [1, 1]);
+  assert.equal(await cache.get('a', load), 1);
+  await assert.rejects(cache.get('b', async () => Promise.reject(new Error('down'))));
+  assert.equal(await cache.get('b', load), 2);
+  await cache.get('c', load);
+  assert.equal(await cache.get('a', load), 4, 'oldest entry is dropped beyond maxEntries');
+});

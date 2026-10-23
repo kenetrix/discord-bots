@@ -4,6 +4,10 @@ const { recommendBans, predictPicks, suggestComp, gamePlan } = require('../scout
 
 const PLAYER_OPTIONS = ['player1', 'player2', 'player3', 'player4', 'player5'];
 const DEFAULT_REGION = (process.env.SCOUT_REGION || 'EUW').toUpperCase();
+const COOLDOWN_MS = 60e3; // per user, so one person cannot flood OP.GG
+const lastScout = new Map(); // user id -> time of their last scout
+const running = new Set(); // guild ids with a scout in progress
+
 const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPORT: 'Support' };
 
 /** What went wrong for one player, in words a user can act on. */
@@ -58,6 +62,38 @@ function buildEmbed({ region, players, picks, failed, bans, alternatives, comp, 
   return embed;
 }
 
+/** Looks the players up and posts the report. */
+async function scout(interaction, ids, region) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const [results, rolePools] = await Promise.all([Promise.allSettled(ids.map((id) => getPlayer(id, region))), getRolePools()]);
+  const players = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
+  const errors = results.filter((r) => r.status === 'rejected').map((r) => r.reason);
+  const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [`${ids[i]}: ${failureReason(r.reason, region)}`] : []));
+  if (!players.length) return interaction.editReply(nobodyFound(errors, failed));
+
+  const { bans, alternatives } = recommendBans(players);
+  const banned = new Set(bans.map((b) => b.champion));
+  const picks = predictPicks(players, banned, rolePools);
+  const [comp, tags] = await Promise.all([
+    suggestComp(picks, banned, getCounters, rolePools),
+    getChampionTags(picks.map((p) => p.champion).filter(Boolean)),
+  ]);
+  const plan = gamePlan(picks, (name) => tags.get(name));
+  const embed = buildEmbed({ region, players, picks, failed, bans, alternatives, comp, plan });
+
+  // Post into the text chat of the caller's voice channel, so the whole team sees it; else into this channel.
+  const voice = interaction.member.voice?.channel;
+  const canPost = voice
+    ?.permissionsFor(interaction.guild.members.me)
+    .has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks]);
+  const target = canPost ? voice : interaction.channel;
+  await target.send({ content: `Scouting report requested by ${interaction.user}`, embeds: [embed], allowedMentions: { parse: [] } });
+
+  const where = voice && !canPost ? ` I may not write in ${voice}, so I posted it here.` : '';
+  return interaction.editReply(`Posted the report in ${target}.${where}`);
+}
+
 module.exports = {
   data: (() => {
     const builder = new SlashCommandBuilder()
@@ -83,33 +119,20 @@ module.exports = {
       return interaction.reply({ content: `Not a Riot ID like Name#TAG: ${invalid.join(', ')}`, flags: MessageFlags.Ephemeral });
     }
     const region = interaction.options.getString('region') ?? DEFAULT_REGION;
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-    const [results, rolePools] = await Promise.all([Promise.allSettled(ids.map((id) => getPlayer(id, region))), getRolePools()]);
-    const players = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
-    const errors = results.filter((r) => r.status === 'rejected').map((r) => r.reason);
-    const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [`${ids[i]}: ${failureReason(r.reason, region)}`] : []));
-    if (!players.length) return interaction.editReply(nobodyFound(errors, failed));
-
-    const { bans, alternatives } = recommendBans(players);
-    const banned = new Set(bans.map((b) => b.champion));
-    const picks = predictPicks(players, banned, rolePools);
-    const [comp, tags] = await Promise.all([
-      suggestComp(picks, banned, getCounters, rolePools),
-      getChampionTags(picks.map((p) => p.champion).filter(Boolean)),
-    ]);
-    const plan = gamePlan(picks, (name) => tags.get(name));
-    const embed = buildEmbed({ region, players, picks, failed, bans, alternatives, comp, plan });
-
-    // Post into the text chat of the caller's voice channel, so the whole team sees it; else into this channel.
-    const voice = interaction.member.voice?.channel;
-    const canPost = voice
-      ?.permissionsFor(interaction.guild.members.me)
-      .has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks]);
-    const target = canPost ? voice : interaction.channel;
-    await target.send({ content: `Scouting report requested by ${interaction.user}`, embeds: [embed], allowedMentions: { parse: [] } });
-
-    const where = voice && !canPost ? ` I may not write in ${voice}, so I posted it here.` : '';
-    return interaction.editReply(`Posted the report in ${target}.${where}`);
+    const wait = (lastScout.get(interaction.user.id) ?? 0) + COOLDOWN_MS - Date.now();
+    if (wait > 0) {
+      return interaction.reply({ content: `You can scout again in ${Math.ceil(wait / 1e3)} s.`, flags: MessageFlags.Ephemeral });
+    }
+    if (running.has(interaction.guildId)) {
+      return interaction.reply({ content: 'A scout is already running on this server. Try again in a few seconds.', flags: MessageFlags.Ephemeral });
+    }
+    running.add(interaction.guildId);
+    lastScout.set(interaction.user.id, Date.now());
+    try {
+      return await scout(interaction, ids, region);
+    } finally {
+      running.delete(interaction.guildId);
+    }
   },
 };

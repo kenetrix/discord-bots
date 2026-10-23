@@ -1,5 +1,10 @@
 // Fetches scouting data from OP.GG and maps it to the shapes used in analysis.js.
 const { OpggError, callTool } = require('./mcp');
+const { TtlCache } = require('./cache');
+
+// A player's data hardly changes during one Clash day; matchup stats change with the patch.
+const playerCache = new TtlCache(30 * 60e3);
+const counterCache = new TtlCache(6 * 60 * 60e3);
 
 const REGIONS = ['EUW', 'EUNE', 'NA', 'KR', 'BR', 'LAN', 'LAS', 'OCE', 'TR', 'RU', 'JP', 'ME', 'SEA', 'TW', 'VN'];
 
@@ -64,10 +69,14 @@ function normalizeRoles(games) {
   return [...counts].map(([role, count]) => ({ role, games: count }));
 }
 
-/** Rank, role stats and champion pool of one player. Throws an OpggError when OP.GG does not know them. */
+/** Rank, role stats and champion pool of one player, cached for 30 minutes. Throws an OpggError when OP.GG does not know them. */
 async function getPlayer(riotId, region) {
   const id = parseRiotId(riotId);
   if (!id) throw new Error(`"${riotId}" is not a Riot ID like Name#TAG.`);
+  return playerCache.get(`${region}:${id.gameName}#${id.tagLine}`.toLowerCase(), () => fetchPlayer(id, region));
+}
+
+async function fetchPlayer(id, region) {
   const account = { game_name: id.gameName, tag_line: id.tagLine, region };
   const [profile, matches] = await Promise.all([
     callTool('lol_get_summoner_profile', {
@@ -101,8 +110,12 @@ async function getPlayer(riotId, region) {
 
 const ROLE_TO_POSITION = { TOP: 'top', JUNGLE: 'jungle', MID: 'mid', ADC: 'adc', SUPPORT: 'support' };
 
-/** Champions that beat `champion` in `role`, best first. Empty when OP.GG has too few games for the matchup. */
-async function getCounters(champion, role) {
+/** Champions that beat `champion` in `role`, best first, cached for 6 hours. Empty when OP.GG has too few games for the matchup. */
+function getCounters(champion, role) {
+  return counterCache.get(`${championKey(champion)}:${role}`, () => fetchCounters(champion, role));
+}
+
+async function fetchCounters(champion, role) {
   const data = await callTool('lol_get_champion_analysis', {
     champion: championKey(champion),
     position: ROLE_TO_POSITION[role],
