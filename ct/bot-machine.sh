@@ -37,6 +37,19 @@ update_alpine() {
     exit
   fi
 
+  # botctl lives inside the install script; extract the current version from the repository.
+  msg_info "Updating botctl"
+  local tmp
+  tmp=$(mktemp)
+  if wget -qO- "${COMMUNITY_SCRIPTS_URL}/install/bot-machine-install.sh" |
+    sed -n "/^cat <<'BOTCTL'/,/^BOTCTL/p" | sed '1d;$d' >"$tmp" && bash -n "$tmp" && [[ -s "$tmp" ]]; then
+    install -m 0755 "$tmp" /usr/local/bin/botctl
+    msg_ok "Updated botctl"
+  else
+    msg_warn "Could not fetch botctl, keeping the installed version"
+  fi
+  rm -f "$tmp"
+
   msg_info "Updating Bots"
   $STD botctl update-all
   msg_ok "Updated Bots"
