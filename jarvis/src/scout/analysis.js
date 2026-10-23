@@ -79,13 +79,17 @@ function assignRoles(players) {
   return players.map((player, i) => ({ player, role: best.roles[i] }));
 }
 
-/** The champion each enemy will most likely play once the bans are in. */
-function predictPicks(players, banned) {
+/**
+ * The champion each enemy will most likely play once the bans are in.
+ * rolePools (Map of role -> Set of champion names, optional) keeps the guess to champions played in that role.
+ */
+function predictPicks(players, banned, rolePools = null) {
   return assignRoles(players).map(({ player, role }) => {
     const total = player.champions.reduce((sum, c) => sum + c.games, 0);
-    const pick = player.champions
-      .filter((c) => c.games && !banned.has(c.name))
-      .sort((a, b) => threat(b, total) - threat(a, total))[0];
+    const available = player.champions.filter((c) => c.games && !banned.has(c.name));
+    const pool = rolePools?.get(role);
+    const inRole = pool ? available.filter((c) => pool.has(c.name)) : [];
+    const pick = (inRole.length ? inRole : available).sort((a, b) => threat(b, total) - threat(a, total))[0];
     return { player: player.riotId, role, champion: pick?.name ?? null };
   });
 }
@@ -109,16 +113,19 @@ function gamePlan(picks, tagsOf) {
 
 /**
  * Suggests one pick (and one alternative) per role against the predicted enemy picks.
- * countersOf(champion, role) returns champions that beat it, best first.
+ * countersOf(champion, role) returns champions that beat it, best first; rolePools as in predictPicks
+ * moves counters that are played in that role to the front.
  */
-async function suggestComp(picks, banned, countersOf) {
+async function suggestComp(picks, banned, countersOf, rolePools = null) {
   const counters = await Promise.all(
     picks.map(({ role, champion }) => (champion ? countersOf(champion, role).catch(() => []) : [])),
   );
   const taken = new Set(banned);
   const comp = [];
   for (const [i, { role, champion }] of picks.entries()) {
-    const [pick, alt] = counters[i].filter((c) => !taken.has(c.name));
+    const pool = rolePools?.get(role);
+    const free = counters[i].filter((c) => !taken.has(c.name));
+    const [pick, alt] = pool ? [...free.filter((c) => pool.has(c.name)), ...free.filter((c) => !pool.has(c.name))] : free;
     if (pick) taken.add(pick.name);
     comp.push({ role, against: champion, pick: pick ?? null, alternative: alt ?? null });
   }

@@ -63,3 +63,19 @@ test('game plan reacts to champion classes', () => {
   assert.equal(plan.length, 1);
   assert.match(plan[0], /Fighter-heavy/);
 });
+
+test('predicted picks stay in the role when OP.GG knows the role pool', () => {
+  const flex = player('Flex#EUW', { ADC: 20 }, [['Shen', 30, 20], ['Jinx', 10, 5]]);
+  const pools = new Map([['ADC', new Set(['Jinx'])]]);
+  assert.equal(predictPicks([flex], new Set(), pools)[0].champion, 'Jinx');
+  assert.equal(predictPicks([flex], new Set())[0].champion, 'Shen');
+});
+
+test('comp prefers counters that are played in the role', async () => {
+  const picks = [{ role: 'ADC', champion: 'Jinx' }];
+  const countersOf = async () => [{ name: 'Yasuo' }, { name: 'Draven' }, { name: 'Ashe' }];
+  const pools = new Map([['ADC', new Set(['Draven', 'Ashe'])]]);
+  const [adc] = await suggestComp(picks, new Set(), countersOf, pools);
+  assert.equal(adc.pick.name, 'Draven');
+  assert.equal(adc.alternative.name, 'Ashe');
+});
