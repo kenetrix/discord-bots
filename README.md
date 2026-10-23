@@ -88,7 +88,7 @@ botctl list
 
 Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the OpenRC service `bot.<name>` (log: `/var/log/bots/<name>.log`) and starts automatically after a reboot. Another bot only needs a repo with a `package.json` and a `start` script; an optional `deploy-commands` script runs on `start` and `update`.
 
-The community-scripts `update` command inside the container re-runs `ct/bot-machine.sh`, which updates all bots and the OS packages. It fetches the script from the repository, so it only works while the repository is publicly readable; `botctl update-all` always works.
+The community-scripts `update` command inside the container re-runs `ct/bot-machine.sh`, which refreshes `botctl` from this repository, then updates all bots and the OS packages. It fetches the script from the repository, so it only works while the repository is publicly readable; `botctl update-all` always works.
 
 ## Local development
 
