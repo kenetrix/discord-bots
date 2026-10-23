@@ -4,7 +4,7 @@ Self-hosted Discord bots (starting with Jarvis) plus a Proxmox script for the "b
 
 | Folder | Contents |
 | --- | --- |
-| [`bot/`](bot/) | Jarvis: roles, moderation, cleanup (Node.js, discord.js v14) |
+| [`jarvis/`](jarvis/) | Jarvis: roles, moderation, cleanup (Node.js, discord.js v14) |
 | [`ct/`](ct/) and [`install/`](install/) | `bot-machine` scripts in the [community-scripts](https://community-scripts.org/) layout: create an LXC that runs any number of bots |
 
 ## Bot features
@@ -61,7 +61,7 @@ The install script sets up Node.js, git, `botctl` and the first bot. It reads th
 | --- | --- | --- |
 | `var_bot_name` | Name of the first bot | `jarvis` |
 | `var_bot_repo` | Git URL of the bot | this repository |
-| `var_bot_path` | Subfolder with the `package.json` | `bot` |
+| `var_bot_path` | Subfolder with the `package.json` | `jarvis` |
 | `var_web_password` | Password of the web interface | generated, stored in `/etc/botctl-web/password` |
 | `var_bot_repo_token` | GitHub token for a private repo (stored in the bot's `.git/config`) | none |
 | `var_discord_token`, `var_discord_client_id`, `var_discord_guild_id` | Written to the bot's `.env`; with token and client ID the bot is started right away | none |
@@ -100,7 +100,7 @@ The community-scripts `update` command inside the container re-runs `ct/bot-mach
 ## Local development
 
 ```bash
-cd bot
+cd jarvis
 cp .env.example .env     # fill in values; with GUILD_ID, commands show up instantly
 npm install
 npm run deploy-commands

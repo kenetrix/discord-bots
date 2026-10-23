@@ -161,18 +161,42 @@ register_commands() {
 
 cmd_start() { exists "$1"; register_commands "$1"; rc-service "bot.$1" start; echo "Started. Log: botctl logs $1"; }
 
+# The bot repository can list renamed subfolders in .botctl-renames ("<old> <new>" per line).
+# A bot installed from an old subfolder is moved over: .env and data are carried along.
+migrate_renamed_dir() {
+  local name="$1" root="$BOTS_DIR/$1" dir="$2" rel old new
+  [[ -f "$dir/package.json" || ! -f "$root/.botctl-renames" ]] && return 0
+  rel="${dir#"$root"/}"
+  while read -r old new; do
+    [[ -n "$old" && "$old" == "$rel" && -f "$root/$new/package.json" ]] || continue
+    echo "Moving $name from '$old' to '$new' …"
+    rc-service "bot.$name" stop >/dev/null 2>&1 || true
+    local item
+    for item in .env data; do
+      [[ -e "$dir/$item" && ! -e "$root/$new/$item" ]] && mv "$dir/$item" "$root/$new/$item"
+    done
+    sed -i "s|^directory=.*|directory=\"$root/$new\"|" "/etc/init.d/bot.$name"
+    rm -rf "$dir"
+    return 0
+  done <"$root/.botctl-renames"
+  return 0
+}
+
 cmd_update() {
   need_root; exists "$1"
   local root="$BOTS_DIR/$1" dir; dir=$(app_dir "$1")
+  local was_active=0; is_active "$1" && was_active=1
   local branch; branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
   local before; before=$(as_bot git -C "$root" rev-parse --short HEAD)
   as_bot git -C "$root" fetch --quiet --depth 1 origin "$branch"
   as_bot git -C "$root" reset --quiet --hard FETCH_HEAD
   local after; after=$(as_bot git -C "$root" rev-parse --short HEAD)
   echo "$1: $before → $after"
+  migrate_renamed_dir "$1" "$dir"
+  dir=$(app_dir "$1")
   install_deps "$dir"
   register_commands "$1"
-  if is_active "$1"; then
+  if [[ $was_active -eq 1 ]]; then
     rc-service "bot.$1" restart
     echo "Restarted."
   else

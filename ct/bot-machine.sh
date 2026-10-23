@@ -20,7 +20,7 @@ var_unprivileged="${var_unprivileged:-1}"
 # Credentials are never stored in the script or in the defaults file, pass them per run.
 export var_bot_name="${var_bot_name:-jarvis}"
 export var_bot_repo="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
-export var_bot_path="${var_bot_path-bot}"
+export var_bot_path="${var_bot_path-jarvis}"
 export var_bot_repo_token="${var_bot_repo_token:-}"
 export var_web_password="${var_web_password:-}"
 export var_discord_token="${var_discord_token:-}"

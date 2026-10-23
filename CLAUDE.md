@@ -1,6 +1,6 @@
 # Project rules
 
-Self-hosted Discord bots plus a Proxmox script for the machine they run on. The bot in `bot/` is called **Jarvis**; `ct/bot-machine.sh` and `install/bot-machine-install.sh` (community-scripts layout) create the LXC that runs it. See `README.md` for setup.
+Self-hosted Discord bots plus a Proxmox script for the machine they run on. The bot in `jarvis/` is called **Jarvis**; `ct/bot-machine.sh` and `install/bot-machine-install.sh` (community-scripts layout) create the LXC that runs it. See `README.md` for setup.
 
 ## Language
 
@@ -22,7 +22,7 @@ Self-hosted Discord bots plus a Proxmox script for the machine they run on. The 
 
 ## Checks before pushing
 
-- `cd bot && npm run check` loads and validates all slash commands without connecting to Discord.
+- `cd jarvis && npm run check` loads and validates all slash commands without connecting to Discord.
 - `shellcheck -S warning ct/bot-machine.sh install/bot-machine-install.sh` for changes to the Proxmox scripts.
 
 ## Proxmox scripts
