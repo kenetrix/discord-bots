@@ -55,7 +55,10 @@ test('profile and match data map to the scouting shapes', () => {
   assert.equal(normalizeRank([{ game_type: 'SOLORANKED', tier_info: { tier: 'GOLD', division: 2, lp: 40 }, win: 13, lose: 12 }]), 'GOLD II 40 LP, 52 % WR');
   assert.equal(normalizeRank([{ game_type: 'SOLORANKED', tier_info: { tier: null } }]), null);
   assert.deepEqual(normalizeChampions(summoner.most_champions.champion_stats)[0], { name: 'Ahri', games: 1158, wins: 575 });
-  assert.deepEqual(normalizeRoles(parseNotation(MATCHES).data.game_history), [{ role: 'MID', games: 2 }, { role: 'ADC', games: 1 }]);
+  assert.deepEqual(normalizeRoles(parseNotation(MATCHES).data.game_history), [
+    { role: 'MID', games: 2, champions: [{ name: 'Ahri', games: 1 }, { name: 'Lux', games: 1 }] },
+    { role: 'ADC', games: 1, champions: [{ name: 'Ahri', games: 1 }] },
+  ]);
 });
 
 test('champion names become OP.GG keys', () => {

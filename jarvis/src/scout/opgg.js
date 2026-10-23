@@ -89,14 +89,28 @@ function normalizeChampions(list) {
     .filter((c) => c.name && c.games);
 }
 
-/** Games per role in the player's recent matches (OP.GG lists only the requested player in each match). */
+/**
+ * Games per role in the player's recent matches (OP.GG lists only the requested player in each match),
+ * most played role first, each with the champions played there, most played first.
+ */
 function normalizeRoles(games) {
-  const counts = new Map();
+  const roles = new Map();
   for (const game of games ?? []) {
-    const role = POSITION_ALIASES[String(game?.participants?.[0]?.position ?? '').toUpperCase()];
-    if (role) counts.set(role, (counts.get(role) ?? 0) + 1);
+    const participant = game?.participants?.[0];
+    const role = POSITION_ALIASES[String(participant?.position ?? '').toUpperCase()];
+    if (!role) continue;
+    const entry = roles.get(role) ?? { role, games: 0, champions: new Map() };
+    entry.games += 1;
+    if (participant.champion_name) entry.champions.set(participant.champion_name, (entry.champions.get(participant.champion_name) ?? 0) + 1);
+    roles.set(role, entry);
   }
-  return [...counts].map(([role, count]) => ({ role, games: count }));
+  return [...roles.values()]
+    .sort((a, b) => b.games - a.games)
+    .map(({ role, games: count, champions }) => ({
+      role,
+      games: count,
+      champions: [...champions].sort((a, b) => b[1] - a[1]).map(([name, n]) => ({ name, games: n })),
+    }));
 }
 
 /**

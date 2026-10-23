@@ -80,18 +80,51 @@ function assignRoles(players) {
 }
 
 /**
- * The champion each enemy will most likely play once the bans are in.
- * rolePools (Map of role -> Set of champion names, optional) keeps the guess to champions played in that role.
+ * The champion a player will most likely pick in `role`: their most dangerous season champion that is
+ * played in that role (rolePools: Map of role -> Set of champion names, optional), else what they played
+ * there recently, else their most dangerous champion at all.
+ */
+function likelyPick(player, role, banned, rolePools = null) {
+  const total = player.champions.reduce((sum, c) => sum + c.games, 0);
+  const available = player.champions.filter((c) => c.games && !banned.has(c.name));
+  const pool = rolePools?.get(role);
+  const inRole = pool ? available.filter((c) => pool.has(c.name)) : [];
+  if (inRole.length) return inRole.sort((a, b) => threat(b, total) - threat(a, total))[0].name;
+  const recent = player.roles.find((r) => r.role === role)?.champions?.find((c) => !banned.has(c.name));
+  if (recent) return recent.name;
+  return available.sort((a, b) => threat(b, total) - threat(a, total))[0]?.name ?? null;
+}
+
+const MIN_SECOND_ROLE_SHARE = 0.15;
+
+/** The role a player plays most after `mainRole`, if it is more than a rare fill (2+ games, 15 %+ of games). */
+function secondRole(player, mainRole) {
+  const total = player.roles.reduce((sum, r) => sum + r.games, 0);
+  const other = player.roles.filter((r) => r.role !== mainRole).sort((a, b) => b.games - a.games)[0];
+  return other && other.games >= 2 && other.games >= total * MIN_SECOND_ROLE_SHARE ? other.role : null;
+}
+
+/**
+ * The champion each enemy will most likely play once the bans are in, in their assigned role,
+ * plus their second role and the pick there (second: null when they have none).
  */
 function predictPicks(players, banned, rolePools = null) {
   return assignRoles(players).map(({ player, role }) => {
-    const total = player.champions.reduce((sum, c) => sum + c.games, 0);
-    const available = player.champions.filter((c) => c.games && !banned.has(c.name));
-    const pool = rolePools?.get(role);
-    const inRole = pool ? available.filter((c) => pool.has(c.name)) : [];
-    const pick = (inRole.length ? inRole : available).sort((a, b) => threat(b, total) - threat(a, total))[0];
-    return { player: player.riotId, role, champion: pick?.name ?? null };
+    const other = secondRole(player, role);
+    return {
+      player: player.riotId,
+      role,
+      champion: likelyPick(player, role, banned, rolePools),
+      second: other ? { role: other, champion: likelyPick(player, other, banned, rolePools) } : null,
+    };
   });
+}
+
+/** Threat of each player's most dangerous champion, by Riot ID; used to rank the enemies against each other. */
+function playerThreats(players) {
+  const best = new Map();
+  for (const t of rankThreats(players)) if (!best.has(t.player)) best.set(t.player, t);
+  return best;
 }
 
 const PLAN_RULES = [
@@ -132,4 +165,32 @@ async function suggestComp(picks, banned, countersOf, rolePools = null) {
   return comp;
 }
 
-module.exports = { ROLES, smoothedWinRate, rankThreats, recommendBans, assignRoles, predictPicks, gamePlan, suggestComp };
+/**
+ * Counter picks in case an enemy swaps to their second role: one per player that has one,
+ * avoiding bans and the picks already in `comp`.
+ */
+async function suggestFlexCounters(picks, banned, comp, countersOf, rolePools = null) {
+  const taken = new Set([...banned, ...comp.flatMap((c) => (c.pick ? [c.pick.name] : []))]);
+  const flex = picks.filter((p) => p.second?.champion);
+  const counters = await Promise.all(flex.map((p) => countersOf(p.second.champion, p.second.role).catch(() => [])));
+  return flex.map((p, i) => {
+    const pool = rolePools?.get(p.second.role);
+    const free = counters[i].filter((c) => !taken.has(c.name));
+    const pick = (pool && free.find((c) => pool.has(c.name))) ?? free[0] ?? null;
+    return { player: p.player, role: p.second.role, against: p.second.champion, pick };
+  });
+}
+
+module.exports = {
+  ROLES,
+  smoothedWinRate,
+  rankThreats,
+  recommendBans,
+  assignRoles,
+  secondRole,
+  predictPicks,
+  playerThreats,
+  gamePlan,
+  suggestComp,
+  suggestFlexCounters,
+};

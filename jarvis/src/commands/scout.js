@@ -1,14 +1,15 @@
-const { SlashCommandBuilder, EmbedBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
-const { REGIONS, parseRiotId, opggUrl, getPlayer, getCounters, getRolePools, getChampionTags } = require('../scout/opgg');
-const { recommendBans, predictPicks, suggestComp, gamePlan } = require('../scout/analysis');
+const { randomUUID } = require('node:crypto');
+const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
+const { REGIONS, parseRiotId, getPlayer, getCounters, getRolePools, getChampionTags } = require('../scout/opgg');
+const { recommendBans, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../scout/analysis');
+const { buildReport, overview, render, parseButton } = require('../scout/report');
+const { TtlCache } = require('../scout/cache');
 
 const PLAYER_OPTIONS = ['player1', 'player2', 'player3', 'player4', 'player5'];
 const DEFAULT_REGION = (process.env.SCOUT_REGION || 'EUW').toUpperCase();
 const COOLDOWN_MS = 60e3; // per user, so one person cannot flood OP.GG
 const lastScout = new Map(); // user id -> time of their last scout
 const running = new Set(); // guild ids with a scout in progress
-
-const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPORT: 'Support' };
 
 /** What went wrong for one player, in words a user can act on. */
 function failureReason(err, region) {
@@ -27,53 +28,8 @@ function nobodyFound(errors, failed) {
   return `Could not scout anyone.\n${failed.join('\n')}`;
 }
 
-const ROLE_ORDER = Object.keys(ROLE_LABEL);
-
-const escapeMarkdown = (text) => text.replace(/[\\[\]()*_~`|>]/g, '\\$&');
-
-/** "MASTER 26 LP, 51 % WR" -> "Master 26 LP": the rank without the record, which the report leaves out. */
-function shortRank(rank) {
-  if (!rank) return 'Unranked';
-  const [tier, ...rest] = rank.split(',')[0].split(' ');
-  return [tier.charAt(0) + tier.slice(1).toLowerCase(), ...rest].join(' ');
-}
-
-/** Two lines per player: role, linked name and rank, then the three most played champions. */
-function playerLine(player, role, region) {
-  const pool = [...player.champions]
-    .sort((a, b) => b.games - a.games)
-    .slice(0, 3)
-    .map((c) => `${c.name} ${c.games}`)
-    .join(' · ');
-  const name = `[${escapeMarkdown(player.riotId)}](${opggUrl(player.riotId, region)})${player.guessedTag ? '\\*' : ''}`;
-  return `**${ROLE_LABEL[role] ?? '?'}** · ${name} · ${shortRank(player.rank)}\n└ ${pool || 'no ranked games this season'}`;
-}
-
-function compLine(c) {
-  const role = `**${ROLE_LABEL[c.role]}**`;
-  if (!c.pick) return `${role} no counter data${c.against ? ` vs ${c.against}` : ''}`;
-  return `${role} ${c.pick.name}${c.alternative ? ` or ${c.alternative.name}` : ''} *vs ${c.against}*`;
-}
-
-function buildEmbed({ region, players, picks, failed, bans, alternatives, comp, plan }) {
-  const roleOf = new Map(picks.map((p) => [p.player, p.role]));
-  const byRole = [...players].sort((a, b) => ROLE_ORDER.indexOf(roleOf.get(a.riotId)) - ROLE_ORDER.indexOf(roleOf.get(b.riotId)));
-  const banList = bans.map((b) => `**${b.champion}**`).join(' · ') || 'not enough data';
-  const backup = alternatives.length ? `\nBackup: ${alternatives.map((b) => b.champion).join(' · ')}` : '';
-
-  const embed = new EmbedBuilder()
-    .setTitle(`Clash scout · ${region}`)
-    .setColor(0xc89b3c)
-    .setDescription(`🚫 Ban: ${banList}${backup}`)
-    .addFields(
-      { name: 'Enemy team', value: byRole.map((p) => playerLine(p, roleOf.get(p.riotId), region)).join('\n') },
-      { name: 'Pick against them', value: comp.map(compLine).join('\n') },
-    );
-  if (plan.length) embed.addFields({ name: 'Game plan', value: plan.slice(0, 2).map((p) => `• ${p}`).join('\n') });
-  if (failed.length) embed.addFields({ name: 'Not scouted', value: failed.join('\n').slice(0, 1024) });
-  const guessed = players.some((p) => p.guessedTag) ? ' · * tag guessed' : '';
-  return embed.setFooter({ text: `OP.GG · numbers are ranked games this season${guessed}` }).setTimestamp();
-}
+// Reports stay clickable for three hours; after that the buttons answer that the report expired.
+const reports = new TtlCache(3 * 60 * 60e3, 100);
 
 /** Looks the players up and posts the report. */
 async function scout(interaction, ids, region) {
@@ -92,8 +48,12 @@ async function scout(interaction, ids, region) {
     suggestComp(picks, banned, getCounters, rolePools),
     getChampionTags(picks.map((p) => p.champion).filter(Boolean)),
   ]);
+  const flex = await suggestFlexCounters(picks, banned, comp, getCounters, rolePools);
   const plan = gamePlan(picks, (name) => tags.get(name));
-  const embed = buildEmbed({ region, players, picks, failed, bans, alternatives, comp, plan });
+  const threats = playerThreats(players);
+  const id = randomUUID().slice(0, 8);
+  const report = buildReport({ id, region, players, picks, comp, flex, threats, bans, alternatives, plan, failed });
+  reports.get(id, () => report);
 
   // Post into the text chat of the caller's voice channel, so the whole team sees it; else into this channel.
   const voice = interaction.member.voice?.channel;
@@ -101,7 +61,7 @@ async function scout(interaction, ids, region) {
     ?.permissionsFor(interaction.guild.members.me)
     .has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks]);
   const target = canPost ? voice : interaction.channel;
-  await target.send({ content: `Scouting report requested by ${interaction.user}`, embeds: [embed], allowedMentions: { parse: [] } });
+  await target.send({ content: `Scouting report requested by ${interaction.user}`, ...overview(report), allowedMentions: { parse: [] } });
 
   const where = voice && !canPost ? ` I may not write in ${voice}, so I posted it here.` : '';
   return interaction.editReply(`Posted the report in ${target}.${where}`);
@@ -147,5 +107,20 @@ module.exports = {
     } finally {
       running.delete(interaction.guildId);
     }
+  },
+
+  // A button on the team's report opens the view just for the clicker; buttons in that view switch it in place.
+  async handleButton(interaction) {
+    const button = parseButton(interaction.customId);
+    if (!button) return false;
+    const report = await reports.peek(button.id);
+    const view = report && render(report, button.view);
+    if (!view) {
+      await interaction.reply({ content: 'This report has expired. Run /scout again.', flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    if (interaction.message.flags.has(MessageFlags.Ephemeral)) await interaction.update(view);
+    else await interaction.reply({ ...view, flags: MessageFlags.Ephemeral });
+    return true;
   },
 };

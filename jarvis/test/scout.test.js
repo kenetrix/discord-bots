@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { recommendBans, assignRoles, predictPicks, suggestComp, gamePlan } = require('../src/scout/analysis');
+const { recommendBans, assignRoles, secondRole, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../src/scout/analysis');
 const { parseRiotId } = require('../src/scout/opgg');
 
 const player = (riotId, roles, champions) => ({
@@ -80,4 +80,31 @@ test('comp prefers counters that are played in the role', async () => {
   const [adc] = await suggestComp(picks, new Set(), countersOf, pools);
   assert.equal(adc.pick.name, 'Draven');
   assert.equal(adc.alternative.name, 'Ashe');
+});
+
+test('second role needs real games, not a single fill', () => {
+  const flex = player('Flex#EUW', { TOP: 12, JUNGLE: 6, SUPPORT: 1 }, [['Garen', 30, 16]]);
+  assert.equal(secondRole(flex, 'TOP'), 'JUNGLE');
+  assert.equal(secondRole(player('Otp#EUW', { MID: 19, TOP: 1 }, []), 'MID'), null);
+});
+
+test('picks include the second role with a champion played there', () => {
+  const flex = player('Flex#EUW', { TOP: 12, JUNGLE: 6 }, [['Garen', 30, 16], ['JarvanIV', 10, 6]]);
+  const pools = new Map([['TOP', new Set(['Garen'])], ['JUNGLE', new Set(['JarvanIV'])]]);
+  const [pick] = predictPicks([flex], new Set(), pools);
+  assert.equal(pick.champion, 'Garen');
+  assert.deepEqual(pick.second, { role: 'JUNGLE', champion: 'JarvanIV' });
+});
+
+test('flex counters avoid bans and picks already suggested', async () => {
+  const picks = [{ player: 'Flex#EUW', role: 'TOP', champion: 'Garen', second: { role: 'JUNGLE', champion: 'JarvanIV' } }];
+  const comp = [{ role: 'TOP', pick: { name: 'Rammus' } }];
+  const countersOf = async () => [{ name: 'Rammus' }, { name: 'Udyr' }, { name: 'Vi' }];
+  const [flex] = await suggestFlexCounters(picks, new Set(['Udyr']), comp, countersOf);
+  assert.equal(flex.pick.name, 'Vi');
+});
+
+test('player threat ranks the one-trick highest', () => {
+  const threats = playerThreats(team);
+  assert.equal([...threats.values()].sort((a, b) => b.score - a.score)[0].player, 'Mid#EUW');
 });
