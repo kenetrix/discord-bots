@@ -11,11 +11,9 @@ network_check
 update_os
 
 msg_info "Installing Dependencies"
-$STD apt install -y \
+$STD apt install -y --no-install-recommends \
   git \
   ca-certificates \
-  build-essential \
-  python3 \
   nano
 msg_ok "Installed Dependencies"
 

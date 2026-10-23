@@ -53,7 +53,7 @@ Once the repository is public, the community-scripts one-liner works as well:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/main/ct/bot-machine.sh)"
 ```
 
-Defaults: Debian 13, 1 core, 1024 MB RAM, 8 GB disk, unprivileged. Override them with the usual `var_*` variables, for example `var_ram=2048 var_disk=16 bash discord-bots/ct/bot-machine.sh`.
+Defaults: Debian 13, 1 core, 512 MB RAM, 2 GB disk, unprivileged. The install is lean (no compiler: `better-sqlite3` ships prebuilt binaries); Node.js (about 200 MB), git, the Debian base and the bot's `node_modules` (about 55 MB) should add up to roughly 1 GB on disk (estimate, not measured), so 2 GB leaves room for updates and the database. Values below 2 GB are not recommended. Override them with the usual `var_*` variables, for example `var_ram=2048 var_disk=16 bash discord-bots/ct/bot-machine.sh`.
 
 The install script sets up Node.js, git, `botctl` and the first bot. It reads these optional inputs from the environment; nothing is stored in the repo or in the defaults file:
 
