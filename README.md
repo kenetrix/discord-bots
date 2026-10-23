@@ -19,7 +19,7 @@ All commands are slash commands. Who can see them is controlled by Discord's def
 | `/timeout add\|remove` | Timeout, e.g. `10m`, `2h`, `1d` (max. 28 days) | Timeout Members |
 | `/clean` | Delete messages in the current channel right now | Manage Messages |
 | `/cleaner add\|add-voice\|list\|remove\|run` | Scheduled clean-up jobs | Manage Messages |
-| `/config modlog` | Set the moderation log channel | Manage Server |
+| `/config` | Settings dashboard with menus, e.g. for the moderation log channel | Manage Server |
 
 **Clean:** `/clean` deletes messages in the current channel immediately and only reaches messages younger than 14 days. Options: `amount` (1 to 500, default: everything it can reach), `user` (only this user), `later_than` (only messages from the last X hours), `keep_latest` (always keep the newest N messages) and `keep_pinned` (default: yes).
 

@@ -25,6 +25,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
       for (const command of commands) {
         if (command.handleButton && (await command.handleButton(interaction))) break;
       }
+    } else if (interaction.isChannelSelectMenu()) {
+      for (const command of commands) {
+        if (command.handleSelect && (await command.handleSelect(interaction))) break;
+      }
     }
   } catch (err) {
     console.error(`Error in ${interaction.commandName ?? interaction.customId}:`, err);
