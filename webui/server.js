@@ -239,15 +239,21 @@ async function api(req, res, url) {
 }
 
 const PAGE = fs.readFileSync(path.join(__dirname, 'index.html'), 'utf8');
+// The same emoji is used in the page title and as the favicon.
+const FAVICON = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y=".9em" font-size="90">\u{1F916}</text></svg>';
 
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+    if (req.method === 'GET' && url.pathname === '/favicon.svg') {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml', 'Cache-Control': 'public, max-age=86400', 'X-Content-Type-Options': 'nosniff' });
+      return res.end(FAVICON);
+    }
     if (req.method === 'GET' && url.pathname === '/') {
       const nonce = crypto.randomBytes(16).toString('base64');
       return send(res, 200, PAGE.replaceAll('{{NONCE}}', nonce), {
-        'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; connect-src 'self'; base-uri 'none'; form-action 'none'`,
+        'Content-Security-Policy': `default-src 'none'; script-src 'nonce-${nonce}'; style-src 'nonce-${nonce}'; img-src 'self'; connect-src 'self'; base-uri 'none'; form-action 'none'`,
       });
     }
     return send(res, 404, { error: 'Not found' });
