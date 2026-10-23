@@ -77,7 +77,7 @@ Without Discord credentials the container is still created; finish with `botctl 
 
 ### Web interface
 
-The container also runs a small web interface (`webui/`, Node.js built-ins only) on port 8080: `http://<container-ip>:8080`. It shows all bots with their status and offers start, stop, restart, update, logs, setting environment variables (values are write-only and never shown again), adding a bot from a Git URL, deleting a bot and "Update all". The password is printed at the end of the installation and stored in `/etc/botctl-web/password`; after five wrong attempts a client is blocked for five minutes.
+The container also runs a small web interface (`webui/`, Node.js built-ins only) on port 8080: `http://<container-ip>:8080`. It shows all bots with their status and offers start, stop, restart, update, logs, a form for the bot's environment variables (secret values such as the token are write-only and never shown again), a button that copies the Discord invite link to the clipboard, adding a bot from a Git URL, deleting a bot and "Update all". The password is printed at the end of the installation and stored in `/etc/botctl-web/password`; after five wrong attempts a client is blocked for five minutes.
 
 The interface runs as root inside the container because `botctl` needs it and speaks plain HTTP, so only expose it in a trusted network or behind a reverse proxy with HTTPS. Restart it with `rc-service botctl-web restart`.
 

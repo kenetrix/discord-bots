@@ -22,6 +22,8 @@ const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
 const PATH_RE = /^[A-Za-z0-9._/-]*$/;
+const SECRET_RE = /TOKEN|SECRET|PASSWORD|KEY/;
+const INVITE_PERMISSIONS = '1099780156422';
 
 const sessions = new Map(); // token -> expiry
 const failures = new Map(); // ip -> { count, until }
@@ -80,7 +82,14 @@ function readEnvKeys(name) {
     .split('\n')
     .map((line) => line.match(/^([A-Z_][A-Z0-9_]*)=(.*)$/))
     .filter(Boolean)
-    .map(([, key, value]) => ({ key, set: value.length > 0 }));
+    .map(([, key, value]) => ({ key, set: value.length > 0, value: SECRET_RE.test(key) ? undefined : value }));
+}
+
+// Invite link for the bot's application; the permission set is the one Jarvis needs.
+function inviteUrl(vars) {
+  const clientId = (vars.find((v) => v.key === 'CLIENT_ID') || {}).value || '';
+  if (!/^\d{5,25}$/.test(clientId)) return null;
+  return `https://discord.com/oauth2/authorize?client_id=${clientId}&scope=bot+applications.commands&permissions=${INVITE_PERMISSIONS}`;
 }
 
 function tailLog(name, lines) {
@@ -205,7 +214,10 @@ async function api(req, res, url) {
     const lines = Math.min(Math.max(Number(url.searchParams.get('lines')) || 200, 10), 2000);
     return send(res, 200, { output: tailLog(name, lines) });
   }
-  if (method === 'GET' && action === 'env') return send(res, 200, readEnvKeys(name));
+  if (method === 'GET' && action === 'env') {
+    const vars = readEnvKeys(name);
+    return send(res, 200, { vars, inviteUrl: inviteUrl(vars) });
+  }
   if (method === 'POST' && action === 'env') {
     if (!KEY_RE.test(body.key || '')) return send(res, 400, { error: 'Invalid key.' });
     if (typeof body.value !== 'string' || /[\r\n]/.test(body.value)) return send(res, 400, { error: 'Invalid value.' });
