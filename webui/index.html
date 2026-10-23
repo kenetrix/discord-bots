@@ -29,6 +29,9 @@
   pre { margin: 12px 0 0; padding: 12px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; max-height: 320px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-size: 12.5px; }
   .bot { border-top: 1px solid var(--line); padding-top: 12px; margin-top: 12px; }
   .bot:first-child { border-top: 0; padding-top: 0; margin-top: 0; }
+  .var { margin-bottom: 6px; }
+  .varbox { margin-top: 8px; }
+  .varname { flex: 0 0 160px; font-family: ui-monospace, monospace; font-size: 12.5px; }
   .hidden { display: none; }
   #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; max-width: 90vw; }
 </style>
@@ -132,26 +135,89 @@ async function showLogs(name) {
   showOutput(data.output || '(log is empty)');
 }
 
-async function editEnv(name) {
-  const { data } = await api('GET', `/api/bots/${name}/env`);
-  const keys = Array.isArray(data) ? data : [];
-  const known = keys.map((k) => `${k.key}${k.set ? ' (set)' : ' (empty)'}`).join(', ');
-  const key = prompt(`Variable to set for ${name}:\n${known}`, 'DISCORD_TOKEN');
-  if (!key) return;
-  const value = prompt(`Value for ${key} (it is not shown again):`);
-  if (value === null) return;
-  await act('Set variable', () => api('POST', `/api/bots/${name}/env`, { key, value }));
-  toast(`${key} saved. Restart the bot to apply it.`);
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // navigator.clipboard needs HTTPS; this page is usually served over plain HTTP.
+    const area = el('textarea', { value: text });
+    area.style.position = 'fixed';
+    area.style.opacity = '0';
+    document.body.append(area);
+    area.select();
+    const copied = document.execCommand('copy');
+    area.remove();
+    return copied;
+  }
+}
+
+const SECRET_RE = /TOKEN|SECRET|PASSWORD|KEY/;
+
+function varRow(variable) {
+  const secret = SECRET_RE.test(variable.key);
+  const input = el('input', {
+    className: 'grow',
+    type: secret ? 'password' : 'text',
+    value: variable.value || '',
+    placeholder: secret ? (variable.set ? 'set - leave empty to keep' : 'not set') : 'not set',
+    autocomplete: 'off',
+  });
+  input.dataset.key = variable.key;
+  input.dataset.original = variable.value || '';
+  return el('label', { className: 'row var' }, el('span', { className: 'varname', textContent: variable.key }), input);
+}
+
+async function openVariables(bot, box) {
+  if (box.childElementCount) {
+    box.replaceChildren();
+    return;
+  }
+  const { ok, data } = await api('GET', `/api/bots/${bot.name}/env`);
+  if (!ok) return toast(data.error || 'Could not load variables');
+  const rows = el('div', {}, ...data.vars.map(varRow));
+  const extraKey = el('input', { placeholder: 'NEW_VARIABLE', pattern: '[A-Z_][A-Z0-9_]*' });
+  const extraValue = el('input', { className: 'grow', placeholder: 'value', autocomplete: 'off' });
+
+  const save = async (restart) => {
+    const changes = [...rows.querySelectorAll('input')]
+      .filter((input) => input.value !== '' && input.value !== input.dataset.original)
+      .map((input) => ({ key: input.dataset.key, value: input.value }));
+    if (extraKey.value && extraValue.value) changes.push({ key: extraKey.value.trim(), value: extraValue.value });
+    if (!changes.length && !restart) return toast('Nothing to save.');
+    await act('Save variables', async () => {
+      for (const change of changes) {
+        const res = await api('POST', `/api/bots/${bot.name}/env`, change);
+        if (!res.ok) return res;
+      }
+      return restart ? api('POST', `/api/bots/${bot.name}/restart`) : { ok: true, data: { output: `${changes.length} variable(s) saved. Restart the bot to apply them.` } };
+    });
+  };
+
+  const buttons = [el('button', { className: 'primary', type: 'button', textContent: 'Save', onclick: () => save(false) }),
+    el('button', { type: 'button', textContent: 'Save and restart', onclick: () => save(true) })];
+  if (data.inviteUrl) {
+    buttons.push(el('button', {
+      type: 'button',
+      textContent: 'Copy invite link',
+      onclick: async () => toast((await copyText(data.inviteUrl)) ? 'Invite link copied.' : 'Copying failed, select the link manually.'),
+    }));
+  } else {
+    buttons.push(el('span', { className: 'muted', textContent: 'Set CLIENT_ID to get an invite link.' }));
+  }
+  box.replaceChildren(rows, el('div', { className: 'row var' }, extraKey, extraValue), el('div', { className: 'row' }, ...buttons),
+    el('p', { className: 'muted', textContent: 'Secret values (tokens) are never shown; leave a field empty to keep its value.' }));
 }
 
 function botView(bot) {
+  const box = el('div', { className: 'varbox' });
   const buttons = [
     ['Start', () => act('Start', () => api('POST', `/api/bots/${bot.name}/start`))],
     ['Stop', () => act('Stop', () => api('POST', `/api/bots/${bot.name}/stop`))],
     ['Restart', () => act('Restart', () => api('POST', `/api/bots/${bot.name}/restart`))],
     ['Update', () => act('Update', () => api('POST', `/api/bots/${bot.name}/update`))],
     ['Logs', () => showLogs(bot.name)],
-    ['Variables', () => editEnv(bot.name)],
+    ['Variables', () => openVariables(bot, box)],
   ].map(([text, handler]) => el('button', { textContent: text, onclick: handler }));
   const remove = el('button', {
     className: 'danger',
@@ -172,6 +238,7 @@ function botView(bot) {
     ),
     el('div', { className: 'muted', textContent: bot.directory }),
     el('div', { className: 'row' }, ...buttons, remove),
+    box,
   );
 }
 
