@@ -2,7 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits } = require('discord.js');
 const { ephemeral, checkHierarchy, parseDuration } = require('../util');
 const { modlog } = require('../modlog');
 
-const MAX_TIMEOUT = 28 * 864e5; // Discord-Limit: 28 Tage
+const MAX_TIMEOUT = 28 * 864e5; // Discord limit: 28 days
 
 module.exports = {
   data: new SlashCommandBuilder()

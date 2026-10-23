@@ -51,7 +51,7 @@ module.exports = {
 
     const user = interaction.options.getUser('nutzer');
     const member = interaction.options.getMember('nutzer');
-    // Nutzer, die nicht (mehr) auf dem Server sind, können ohne Hierarchie-Check gebannt werden.
+    // Users who are not (or no longer) on the server can be banned without a hierarchy check.
     if (member) {
       const problem = checkHierarchy(interaction, member);
       if (problem) return ephemeral(interaction, problem);

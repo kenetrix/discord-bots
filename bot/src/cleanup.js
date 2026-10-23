@@ -1,19 +1,19 @@
 const { Collection } = require('discord.js');
 
-// bulkDelete geht nur für Nachrichten jünger als 14 Tage; etwas Puffer gegen Grenzfälle.
+// bulkDelete only works for messages younger than 14 days; small buffer for edge cases.
 const BULK_MAX_AGE = 14 * 864e5 - 60e3;
 
 /**
- * Löscht Nachrichten in einem Kanal.
+ * Deletes messages in a channel.
  * @param {import('discord.js').TextBasedChannel} channel
  * @param {object} opts
- * @param {number}  [opts.maxAgeMs=0]       Nur Nachrichten älter als diese Zeit löschen (0 = alle)
- * @param {boolean} [opts.keepPinned=true]  Angepinnte Nachrichten behalten
- * @param {string}  [opts.userId]           Nur Nachrichten dieses Nutzers
- * @param {number}  [opts.limit=Infinity]   Höchstens so viele Nachrichten löschen
- * @param {number}  [opts.maxScan=5000]     Höchstens so viele Nachrichten durchsuchen
- * @param {boolean} [opts.allowOld=true]    Nachrichten älter als 14 Tage einzeln löschen
- * @param {number}  [opts.maxSingle=300]    Obergrenze für Einzel-Löschungen pro Lauf (Rate-Limits)
+ * @param {number}  [opts.maxAgeMs=0]       Only delete messages older than this (0 = all)
+ * @param {boolean} [opts.keepPinned=true]  Keep pinned messages
+ * @param {string}  [opts.userId]           Only messages by this user
+ * @param {number}  [opts.limit=Infinity]   Delete at most this many messages
+ * @param {number}  [opts.maxScan=5000]     Scan at most this many messages
+ * @param {boolean} [opts.allowOld=true]    Delete messages older than 14 days one by one
+ * @param {number}  [opts.maxSingle=300]    Cap on single deletes per run (rate limits)
  * @returns {Promise<{deleted: number, skippedOld: number}>}
  */
 async function cleanChannel(channel, opts = {}) {

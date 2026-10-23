@@ -1,4 +1,4 @@
-// Registriert die Slash-Commands bei Discord. Nach jeder Änderung an Commands einmal ausführen.
+// Registers the slash commands with Discord. Run once after every change to a command.
 const { REST, Routes } = require('discord.js');
 const { token, clientId, guildId } = require('./config');
 const commands = require('./commands');

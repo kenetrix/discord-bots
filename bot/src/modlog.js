@@ -2,8 +2,8 @@ const { EmbedBuilder } = require('discord.js');
 const { stmts } = require('./db');
 
 /**
- * Schreibt einen Eintrag in den Mod-Log-Kanal des Servers, falls einer gesetzt ist.
- * Fehler werden nur geloggt, damit eine Moderationsaktion nie am Log scheitert.
+ * Posts an entry to the server's mod log channel, if one is set.
+ * Errors are only logged so a moderation action never fails because of the log.
  */
 async function modlog(guild, { action, target, moderator, reason, color = 0x5865f2, fields = [] }) {
   const settings = stmts.getSettings.get(guild.id);

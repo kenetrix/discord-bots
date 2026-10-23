@@ -5,7 +5,7 @@ const { startScheduler } = require('./scheduler');
 const commands = require('./commands');
 
 const client = new Client({
-  // Kein MessageContent-Intent nötig: Cleanup liest nur Metadaten (Autor, Zeit, Pin).
+  // No MessageContent intent needed: cleanup only reads metadata (author, time, pin).
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages],
 });
 

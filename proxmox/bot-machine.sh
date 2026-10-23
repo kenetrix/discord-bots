@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 # =============================================================================
-#  Bot-Maschine – Proxmox VE Helper-Script
-#  Legt einen Debian-LXC an, auf dem mehrere Bots (Node.js) als eigene
-#  systemd-Services laufen. Verwaltung im Container mit `botctl`.
+#  Bot machine – Proxmox VE helper script
+#  Creates a Debian LXC that runs multiple bots (Node.js), each as its own
+#  systemd service. Managed inside the container with `botctl`.
 #
-#  Auf dem Proxmox-Host als root ausführen:
+#  Run on the Proxmox host as root:
 #    bash bot-machine.sh
 #
-#  Ohne Dialoge (alle Werte optional, sonst Standard):
+#  Without dialogs (all values optional, defaults otherwise):
 #    CTID=120 HOSTNAME=bot-machine CORES=1 RAM=1024 DISK=8 STORAGE=local-lvm \
 #    BRIDGE=vmbr0 IP=dhcp NODE_MAJOR=24 bash bot-machine.sh --yes
 # =============================================================================
 set -Eeuo pipefail
 
-# ---------- Ausgabe ----------------------------------------------------------
+# ---------- Output -----------------------------------------------------------
 YW=$'\033[33m'; GN=$'\033[1;92m'; RD=$'\033[01;31m'; BL=$'\033[36m'; CL=$'\033[m'
 msg_info() { printf ' %s…%s %s\n' "$YW" "$CL" "$1"; }
 msg_ok()   { printf ' %s✔%s %s\n' "$GN" "$CL" "$1"; }
@@ -35,7 +35,7 @@ EOF
   echo
 }
 
-# ---------- Voraussetzungen --------------------------------------------------
+# ---------- Prerequisites ----------------------------------------------------
 ASSUME_YES=0
 [[ "${1:-}" == "--yes" || "${1:-}" == "-y" ]] && ASSUME_YES=1
 
@@ -46,10 +46,10 @@ if [[ $ASSUME_YES -eq 0 ]] && ! command -v whiptail >/dev/null; then
   die "whiptail fehlt. Installiere es mit 'apt install whiptail' oder nutze --yes."
 fi
 
-# ---------- Standardwerte ----------------------------------------------------
+# ---------- Defaults ---------------------------------------------------------
 CTID="${CTID:-$(pvesh get /cluster/nextid)}"
 HOSTNAME="${HOSTNAME_CT:-${HOSTNAME:-bot-machine}}"
-# Der Shell-HOSTNAME des Proxmox-Hosts ist kein sinnvoller Standard.
+# The Proxmox host's own shell HOSTNAME is not a sensible default.
 [[ "$HOSTNAME" == "$(hostname)" ]] && HOSTNAME="bot-machine"
 CORES="${CORES:-1}"
 RAM="${RAM:-1024}"
@@ -61,7 +61,7 @@ GATEWAY="${GATEWAY:-}"
 NODE_MAJOR="${NODE_MAJOR:-24}"
 ROOT_PASSWORD="${ROOT_PASSWORD:-}"
 
-# Container-Speicher: erster Speicher, der Container-Dateisysteme kann
+# Container storage: first storage that supports container root filesystems
 mapfile -t ROOT_STORAGES < <(pvesm status -content rootdir 2>/dev/null | awk 'NR>1 {print $1}')
 [[ ${#ROOT_STORAGES[@]} -gt 0 ]] || die "Kein Speicher mit Inhaltstyp 'rootdir' gefunden."
 STORAGE="${STORAGE:-${ROOT_STORAGES[0]}}"
@@ -69,7 +69,7 @@ STORAGE="${STORAGE:-${ROOT_STORAGES[0]}}"
 TMPL_STORAGE="${TMPL_STORAGE:-$(pvesm status -content vztmpl 2>/dev/null | awk 'NR>1 {print $1; exit}')}"
 [[ -n "$TMPL_STORAGE" ]] || die "Kein Speicher mit Inhaltstyp 'vztmpl' (Templates) gefunden."
 
-# ---------- Dialoge ----------------------------------------------------------
+# ---------- Dialogs ----------------------------------------------------------
 ask() { # ask <Titel> <Frage> <Standard>
   whiptail --title "$1" --inputbox "$2" 10 60 "$3" 3>&1 1>&2 2>&3 || die "Abgebrochen."
 }
@@ -117,7 +117,7 @@ if ! grep -q "$TEMPLATE" <<< "$(pveam list "$TMPL_STORAGE")"; then
   msg_ok "Template heruntergeladen"
 fi
 
-# ---------- Container anlegen ------------------------------------------------
+# ---------- Create container -------------------------------------------------
 NET="name=eth0,bridge=$BRIDGE,ip=$IP"
 [[ -n "$GATEWAY" ]] && NET+=",gw=$GATEWAY"
 
@@ -130,7 +130,7 @@ pct create "$CTID" "$TMPL_STORAGE:vztmpl/$TEMPLATE" \
   --unprivileged 1 --features nesting=1 \
   --onboot 1 --ostype debian --timezone host \
   --tags bots \
-  --description "Bot-Maschine: Bots liegen unter /opt/bots, Verwaltung mit 'botctl'." \
+  --description "Bot machine: bots live in /opt/bots, managed with 'botctl'." \
   ${ROOT_PASSWORD:+--password "$ROOT_PASSWORD"} >/dev/null
 msg_ok "Container $CTID ($HOSTNAME) angelegt"
 
@@ -143,7 +143,7 @@ done
 pct exec "$CTID" -- getent hosts deb.debian.org &>/dev/null || die "Container hat kein Netzwerk (DNS)."
 msg_ok "Container läuft und hat Netzwerk"
 
-# ---------- Installation im Container ----------------------------------------
+# ---------- Install inside the container -------------------------------------
 msg_info "Installiere Node.js $NODE_MAJOR, git und botctl (dauert 1 bis 3 Minuten)"
 pct exec "$CTID" -- env NODE_MAJOR="$NODE_MAJOR" bash -s >/dev/null <<'INSTALL'
 set -Eeuo pipefail
@@ -151,7 +151,7 @@ export DEBIAN_FRONTEND=noninteractive
 apt-get update -qq
 apt-get install -y -qq curl ca-certificates gnupg git build-essential python3 nano >/dev/null
 
-# Node.js über NodeSource
+# Node.js via NodeSource
 install -d -m 0755 /etc/apt/keyrings
 curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key | gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg
 echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_${NODE_MAJOR}.x nodistro main" \
@@ -159,11 +159,11 @@ echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.co
 apt-get update -qq
 apt-get install -y -qq nodejs >/dev/null
 
-# Eigener, unprivilegierter Nutzer für alle Bots
+# Dedicated unprivileged user for all bots
 id bots &>/dev/null || useradd --system --create-home --home-dir /home/bots --shell /usr/sbin/nologin bots
 install -d -o bots -g bots -m 0750 /opt/bots
 
-# systemd-Vorlage: jeder Bot läuft als bot@<name>
+# systemd template: every bot runs as bot@<name>
 cat > /etc/systemd/system/bot@.service <<'UNIT'
 [Unit]
 Description=Bot %i
@@ -174,7 +174,7 @@ Wants=network-online.target
 Type=simple
 User=bots
 Group=bots
-# WorkingDirectory und EnvironmentFile setzt botctl pro Bot in bot@<name>.service.d/
+# botctl sets WorkingDirectory and EnvironmentFile per bot in bot@<name>.service.d/
 WorkingDirectory=/opt/bots/%i
 ExecStart=/usr/bin/npm start --silent
 Environment=NODE_ENV=production
@@ -189,10 +189,10 @@ UNIT
 systemctl daemon-reload
 INSTALL
 
-# botctl separat übertragen, damit das Heredoc oben lesbar bleibt
+# Push botctl separately to keep the heredoc above readable
 pct exec "$CTID" -- bash -c 'cat > /usr/local/bin/botctl && chmod 0755 /usr/local/bin/botctl' <<'BOTCTL'
 #!/usr/bin/env bash
-# botctl – Bots auf der Bot-Maschine verwalten
+# botctl – manage the bots on the bot machine
 set -Eeuo pipefail
 
 BOTS_DIR=/opt/bots
@@ -350,7 +350,7 @@ esac
 BOTCTL
 msg_ok "Node.js $(pct exec "$CTID" -- node -v), git und botctl installiert"
 
-# ---------- Optional: ersten Bot direkt einrichten ---------------------------
+# ---------- Optional: set up the first bot right away -------------------------
 add_first_bot() {
   local name url sub
   name=$(ask "Bot hinzufügen" "Name des Bots (a-z, 0-9, -)" "ken-bot")
@@ -358,7 +358,7 @@ add_first_bot() {
   sub=$(ask "Bot hinzufügen" "Unterordner im Repo mit der package.json (leer = Wurzel)" "bot")
   pct exec "$CTID" -- botctl add "$name" "$url" ${sub:+--path "$sub"} || { msg_err "botctl add fehlgeschlagen."; return; }
 
-  # Leere Werte aus .env.example abfragen und in .env schreiben
+  # Prompt for empty values from .env.example and write them to .env
   local dir; dir=$(pct exec "$CTID" -- systemctl show -p WorkingDirectory --value "bot@$name")
   local env_content; env_content=$(pct exec "$CTID" -- cat "$dir/.env")
   local new_env="" line key val
@@ -385,7 +385,7 @@ if [[ $ASSUME_YES -eq 0 ]] && whiptail --title "Bot-Maschine" --yesno "Container
   add_first_bot
 fi
 
-# ---------- Fertig -----------------------------------------------------------
+# ---------- Done -------------------------------------------------------------
 CT_IP=$(pct exec "$CTID" -- hostname -I 2>/dev/null | awk '{print $1}')
 echo
 msg_ok "Bot-Maschine $HOSTNAME (CT $CTID) ist bereit${CT_IP:+, IP $CT_IP}"

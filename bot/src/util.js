@@ -1,6 +1,6 @@
 const { MessageFlags } = require('discord.js');
 
-/** Antwortet nur für den ausführenden Nutzer sichtbar. */
+/** Replies visibly only to the user who ran the command. */
 function ephemeral(interaction, content) {
   const payload = typeof content === 'string' ? { content } : content;
   const reply = { ...payload, flags: MessageFlags.Ephemeral };
@@ -8,8 +8,8 @@ function ephemeral(interaction, content) {
 }
 
 /**
- * Prüft, ob Moderator und Bot ein Mitglied moderieren dürfen (Rollen-Hierarchie).
- * Gibt eine Fehlermeldung zurück oder null, wenn alles passt.
+ * Checks whether moderator and bot may act on a member (role hierarchy).
+ * Returns an error message, or null if everything is fine.
  */
 function checkHierarchy(interaction, member) {
   const me = interaction.guild.members.me;
@@ -26,7 +26,7 @@ function checkHierarchy(interaction, member) {
   return null;
 }
 
-/** Prüft, ob eine Rolle vom Bot (und vom Moderator) vergeben werden darf. */
+/** Checks whether the bot (and the moderator) may assign a role. */
 function checkRole(interaction, role) {
   const me = interaction.guild.members.me;
   if (role.managed) return `${role} wird von einer Integration verwaltet und kann nicht vergeben werden.`;
@@ -39,7 +39,7 @@ function checkRole(interaction, role) {
   return null;
 }
 
-/** Parst Dauern wie "10m", "2h", "1d", "1w" in Millisekunden. */
+/** Parses durations like "10m", "2h", "1d", "1w" into milliseconds. */
 function parseDuration(input) {
   const match = /^(\d+)\s*([smhdw])$/i.exec(input.trim());
   if (!match) return null;

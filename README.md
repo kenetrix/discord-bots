@@ -1,51 +1,53 @@
 # discord-bots
 
-Selbst gehostete Discord-Bots plus ein Proxmox-Script für die „Bot-Maschine“, auf der sie laufen.
+Self-hosted Discord bots plus a Proxmox script for the "bot machine" they run on.
 
-| Ordner | Inhalt |
+| Folder | Contents |
 | --- | --- |
-| [`bot/`](bot/) | Kens Bot: Rollen, Moderation, Cleanup (Node.js, discord.js v14) |
-| [`proxmox/`](proxmox/) | `bot-machine.sh`: legt einen LXC an, in dem beliebig viele Bots laufen |
+| [`bot/`](bot/) | Ken's bot: roles, moderation, cleanup (Node.js, discord.js v14) |
+| [`proxmox/`](proxmox/) | `bot-machine.sh`: creates an LXC that runs any number of bots |
 
-## Funktionen des Bots
+The bot's replies in Discord are in German.
 
-Alle Befehle sind Slash-Commands. Wer sie sieht, regelt Discord über die Standard-Rechte (anpassbar unter *Servereinstellungen → Integrationen*).
+## Bot features
 
-| Befehl | Zweck | Recht |
+All commands are slash commands. Who can see them is controlled by Discord's default permissions (adjustable under *Server Settings → Integrations*).
+
+| Command | Purpose | Permission |
 | --- | --- | --- |
-| `/role add\|remove` | Rolle vergeben oder entziehen | Rollen verwalten |
-| `/rolepanel` | Panel mit bis zu 10 Buttons, über die sich Mitglieder Rollen selbst geben | Rollen verwalten |
-| `/kick` | Mitglied kicken | Mitglieder kicken |
-| `/ban add\|remove` | Bannen (optional Nachrichten der letzten 7 Tage löschen) oder entbannen | Mitglieder bannen |
-| `/timeout add\|remove` | Timeout, z.B. `10m`, `2h`, `1d` (max. 28 Tage) | Mitglieder im Timeout |
-| `/warn add\|list\|remove\|clear` | Verwarnungen, gespeichert in SQLite | Mitglieder im Timeout |
-| `/purge` | Die letzten 1 bis 500 Nachrichten löschen, optional nur von einem Nutzer | Nachrichten verwalten |
-| `/cleaner add\|list\|remove\|run` | Kanäle zeitgesteuert leeren | Nachrichten verwalten |
-| `/config modlog` | Kanal fürs Moderations-Log setzen | Server verwalten |
+| `/role add\|remove` | Give or take a role | Manage Roles |
+| `/rolepanel` | Panel with up to 10 buttons that let members assign roles to themselves | Manage Roles |
+| `/kick` | Kick a member | Kick Members |
+| `/ban add\|remove` | Ban (optionally deleting the last 7 days of messages) or unban | Ban Members |
+| `/timeout add\|remove` | Timeout, e.g. `10m`, `2h`, `1d` (max. 28 days) | Timeout Members |
+| `/warn add\|list\|remove\|clear` | Warnings, stored in SQLite | Timeout Members |
+| `/purge` | Delete the last 1 to 500 messages, optionally only from one user | Manage Messages |
+| `/cleaner add\|list\|remove\|run` | Clear channels on a schedule | Manage Messages |
+| `/config modlog` | Set the moderation log channel | Manage Server |
 
-**Cleaner:** Zeitplan als `stündlich`, `täglich` (04:00), `wöchentlich` (Mo 04:00) oder als Cron-Ausdruck, z.B. `30 3 * * *`. Mit `aelter_als_stunden` bleiben neue Nachrichten stehen, z.B. `24` für „alles älter als einen Tag“. Angepinnte Nachrichten bleiben standardmäßig erhalten. Nachrichten älter als 14 Tage kann Discord nur einzeln löschen; der Cleaner macht das mit bis zu 300 Stück pro Lauf und arbeitet den Rest beim nächsten Lauf ab.
+**Cleaner:** The schedule is `stündlich` (hourly), `täglich` (daily at 04:00), `wöchentlich` (Mondays at 04:00) or a cron expression such as `30 3 * * *`. With `aelter_als_stunden` (older than hours), recent messages are kept, e.g. `24` for "everything older than one day". Pinned messages are kept by default. Discord only allows messages older than 14 days to be deleted one at a time; the cleaner deletes up to 300 of those per run and continues with the rest on the next run.
 
-## 1. Bot bei Discord anlegen
+## 1. Create the bot in Discord
 
-1. Im [Developer Portal](https://discord.com/developers/applications) eine *New Application* anlegen.
-2. Unter **Bot**: *Reset Token* klicken und den Token notieren. Bei *Privileged Gateway Intents* **Server Members Intent** einschalten.
-3. Unter **General Information** die *Application ID* notieren.
-4. Bot einladen (Application ID einsetzen):
+1. Create a *New Application* in the [Developer Portal](https://discord.com/developers/applications).
+2. Under **Bot**: click *Reset Token* and note the token. Under *Privileged Gateway Intents*, enable **Server Members Intent**.
+3. Under **General Information**, note the *Application ID*.
+4. Invite the bot (insert the Application ID):
    ```
    https://discord.com/oauth2/authorize?client_id=<APPLICATION_ID>&scope=bot+applications.commands&permissions=1099780156422
    ```
-5. In den Servereinstellungen die Rolle des Bots **über** die Rollen ziehen, die er vergeben oder moderieren soll.
+5. In the server settings, drag the bot's role **above** the roles it should assign or moderate.
 
-## 2. Bot-Maschine auf Proxmox anlegen
+## 2. Create the bot machine on Proxmox
 
-Auf dem Proxmox-Host als root. Da das Repo privat ist, entweder das Script per `scp` kopieren:
+Run on the Proxmox host as root. Since the repo is private, either copy the script with `scp`:
 
 ```bash
 scp proxmox/bot-machine.sh root@<proxmox-host>:/root/
 ssh root@<proxmox-host> bash /root/bot-machine.sh
 ```
 
-oder direkt mit einem GitHub-Token (fine-grained, nur Lesezugriff auf dieses Repo) laden:
+or load it directly with a GitHub token (fine-grained, read-only access to this repo):
 
 ```bash
 TOKEN=github_pat_...
@@ -53,31 +55,31 @@ bash -c "$(curl -fsSL -H "Authorization: Bearer $TOKEN" \
   https://raw.githubusercontent.com/kenetrix/discord-bots/main/proxmox/bot-machine.sh)"
 ```
 
-Das Script fragt, ob es die Standardwerte nehmen soll (Debian, 1 Kern, 1024 MB RAM, 8 GB Disk, DHCP auf `vmbr0`) oder ob du sie anpassen willst. Danach installiert es Node.js, git und `botctl` und bietet an, direkt den ersten Bot einzurichten. Dafür fragt es Git-URL, Unterordner (`bot`) und die leeren Werte aus `.env.example` ab.
+The script asks whether to use the defaults (Debian, 1 core, 1024 MB RAM, 8 GB disk, DHCP on `vmbr0`) or let you adjust them. It then installs Node.js, git and `botctl`, and offers to set up the first bot right away. For that it asks for the git URL, the subfolder (`bot`) and the empty values from `.env.example`.
 
-Ohne Dialoge: `CTID=120 RAM=1024 STORAGE=local-lvm bash bot-machine.sh --yes`
+Without dialogs: `CTID=120 RAM=1024 STORAGE=local-lvm bash bot-machine.sh --yes`
 
-## 3. Bots verwalten (im Container, `pct enter <CTID>`)
+## 3. Manage bots (inside the container, `pct enter <CTID>`)
 
 ```bash
 botctl add ken-bot https://<token>@github.com/kenetrix/discord-bots.git --path bot
-botctl env ken-bot       # DISCORD_TOKEN, CLIENT_ID, GUILD_ID eintragen
-botctl start ken-bot     # registriert Slash-Commands und startet
+botctl env ken-bot       # enter DISCORD_TOKEN, CLIENT_ID, GUILD_ID
+botctl start ken-bot     # registers slash commands and starts the bot
 botctl logs ken-bot
-botctl update ken-bot    # git pull, npm ci, Commands neu registrieren, Neustart
+botctl update ken-bot    # git pull, npm ci, re-register commands, restart
 botctl list
 ```
 
-Jeder Bot liegt unter `/opt/bots/<name>/`, läuft als Nutzer `bots` im systemd-Service `bot@<name>` und startet nach einem Neustart automatisch. Ein weiterer Bot braucht nur ein Repo mit `package.json` und einem `start`-Script; ein optionales `deploy-commands`-Script wird bei `start` und `update` ausgeführt.
+Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the systemd service `bot@<name>` and starts automatically after a reboot. Another bot only needs a repo with a `package.json` and a `start` script; an optional `deploy-commands` script runs on `start` and `update`.
 
-## Lokal entwickeln
+## Local development
 
 ```bash
 cd bot
-cp .env.example .env     # Werte eintragen; mit GUILD_ID erscheinen Commands sofort
+cp .env.example .env     # fill in values; with GUILD_ID, commands show up instantly
 npm install
 npm run deploy-commands
 npm start
 ```
 
-`npm run check` validiert alle Command-Definitionen ohne Verbindung zu Discord.
+`npm run check` validates all command definitions without connecting to Discord.

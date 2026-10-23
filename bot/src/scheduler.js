@@ -4,12 +4,12 @@ const { cleanChannel } = require('./cleanup');
 const { modlog } = require('./modlog');
 const { timezone } = require('./config');
 
-/** Laufende Cron-Tasks, Schlüssel ist die Job-ID. */
+/** Running cron tasks, keyed by job id. */
 const tasks = new Map();
 const running = new Set();
 
 async function runJob(client, job) {
-  if (running.has(job.id)) return null; // Vorheriger Lauf ist noch nicht fertig
+  if (running.has(job.id)) return null; // Previous run has not finished yet
   running.add(job.id);
   try {
     const channel = await client.channels.fetch(job.channel_id).catch(() => null);

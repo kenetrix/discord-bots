@@ -70,7 +70,7 @@ module.exports = {
     return ephemeral(interaction, `Panel in ${channel} gepostet.`);
   },
 
-  /** Button-Klick: Rolle umschalten. Die Rollen-ID steckt in der customId, daher keine DB nötig. */
+  /** Button click: toggle the role. The role id is encoded in the customId, so no DB is needed. */
   async handleButton(interaction) {
     if (!interaction.customId.startsWith(PREFIX)) return false;
     const role = interaction.guild.roles.cache.get(interaction.customId.slice(PREFIX.length));
@@ -78,7 +78,7 @@ module.exports = {
       await ephemeral(interaction, 'Diese Rolle gibt es nicht mehr.');
       return true;
     }
-    // Nur die Bot-Hierarchie zählt hier, das Mitglied selbst braucht keine Rechte.
+    // Only the bot's hierarchy matters here; the member needs no permissions.
     if (role.position >= interaction.guild.members.me.roles.highest.position || role.managed) {
       await ephemeral(interaction, `Ich kann ${role} nicht vergeben. Bitte wende dich an die Moderation.`);
       return true;

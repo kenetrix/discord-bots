@@ -5,7 +5,7 @@ const { ephemeral } = require('../util');
 const { scheduleJob, unscheduleJob, runJob } = require('../scheduler');
 const { timezone } = require('../config');
 
-// Kurzformen, damit niemand Cron-Syntax kennen muss.
+// Shorthands so nobody has to know cron syntax.
 const PRESETS = {
   stündlich: '0 * * * *',
   täglich: '0 4 * * *',

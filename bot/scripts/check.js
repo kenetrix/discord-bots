@@ -1,4 +1,4 @@
-// Schnelltest ohne Discord-Verbindung: lädt alle Commands und validiert ihre Definitionen.
+// Quick check without a Discord connection: loads all commands and validates their definitions.
 process.env.DISCORD_TOKEN ||= 'test';
 process.env.CLIENT_ID ||= '1';
 process.env.DB_PATH ||= ':memory:';

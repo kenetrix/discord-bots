@@ -13,7 +13,7 @@ function required(name) {
 module.exports = {
   token: required('DISCORD_TOKEN'),
   clientId: required('CLIENT_ID'),
-  // Optional: mit GUILD_ID werden Slash-Commands sofort nur auf diesem Server registriert.
+  // Optional: with GUILD_ID, slash commands are registered instantly, on that server only.
   guildId: process.env.GUILD_ID || null,
   dbPath: process.env.DB_PATH || path.join(__dirname, '..', 'data', 'bot.db'),
   timezone: process.env.TZ || 'Europe/Berlin',
