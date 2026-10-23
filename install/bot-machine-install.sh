@@ -186,6 +186,11 @@ cmd_update_all() {
   shopt -s nullglob
   for root in "$BOTS_DIR"/*/; do
     name=$(basename "$root")
+    if [[ ! -f "/etc/init.d/bot.$name" ]]; then
+      echo "$name: incomplete installation, skipping. Remove it with 'rm -rf $root' and run 'botctl add' again." >&2
+      rc=1
+      continue
+    fi
     cmd_update "$name" || { echo "Update of $name failed." >&2; rc=1; }
   done
   return "$rc"
