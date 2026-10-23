@@ -28,6 +28,12 @@ class TtlCache {
     return value;
   }
 
+  /** The cached value for `key` without loading it; undefined when missing or expired. */
+  peek(key) {
+    const hit = this.entries.get(key);
+    return hit && hit.expires > Date.now() ? hit.value : undefined;
+  }
+
   clear() {
     this.entries.clear();
   }
