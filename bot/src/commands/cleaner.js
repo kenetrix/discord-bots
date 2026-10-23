@@ -2,7 +2,7 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, Mes
 const cron = require('node-cron');
 const { stmts } = require('../db');
 const { ephemeral } = require('../util');
-const { scheduleJob, unscheduleJob, runJob } = require('../scheduler');
+const { ALL_VOICE, scheduleJob, unscheduleJob, runJob } = require('../scheduler');
 const { timezone } = require('../config');
 
 // Shorthands so nobody has to know cron syntax.
@@ -29,6 +29,27 @@ module.exports = {
             .setRequired(true)
             .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement, ChannelType.GuildVoice),
         )
+        .addStringOption((o) =>
+          o
+            .setName('schedule')
+            .setDescription('hourly, daily (04:00), weekly (Mon 04:00) or cron, e.g. "30 3 * * *"')
+            .setRequired(true),
+        )
+        .addIntegerOption((o) =>
+          o
+            .setName('older_than_hours')
+            .setDescription('Only delete messages older than X hours (default: 0 = all)')
+            .setMinValue(0)
+            .setMaxValue(8760),
+        )
+        .addBooleanOption((o) =>
+          o.setName('keep_pinned').setDescription('Keep pinned messages (default: yes)'),
+        ),
+    )
+    .addSubcommand((sub) =>
+      sub
+        .setName('add-voice')
+        .setDescription('Create a cleaner job that clears the chats of all voice channels')
         .addStringOption((o) =>
           o
             .setName('schedule')
@@ -87,6 +108,25 @@ module.exports = {
       );
     }
 
+    if (sub === 'add-voice') {
+      const input = interaction.options.getString('schedule').trim();
+      const expr = PRESETS[input.toLowerCase()] ?? input;
+      if (!cron.validate(expr)) {
+        return ephemeral(interaction, `Invalid schedule \`${input}\`. Use hourly, daily, weekly or cron syntax.`);
+      }
+      const maxAge = interaction.options.getInteger('older_than_hours') ?? 0;
+      const keepPinned = interaction.options.getBoolean('keep_pinned') ?? true;
+      const { lastInsertRowid } = stmts.addJob.run(guildId, ALL_VOICE, expr, maxAge, keepPinned ? 1 : 0, interaction.user.id);
+      const job = stmts.getJob.get(guildId, lastInsertRowid);
+      scheduleJob(interaction.client, job);
+      return ephemeral(
+        interaction,
+        `Cleaner #${job.id} created: all voice channels will be cleared on \`${expr}\` (${timezone})` +
+          (maxAge ? `, only messages older than ${maxAge} h.` : '.') +
+          ' Voice channels where I lack View Channel, Read Message History or Manage Messages are skipped.',
+      );
+    }
+
     if (sub === 'list') {
       const jobs = stmts.listJobs.all(guildId);
       if (jobs.length === 0) return ephemeral(interaction, 'No cleaner jobs created.');
@@ -97,7 +137,7 @@ module.exports = {
           jobs
             .map(
               (j) =>
-                `**#${j.id}** · <#${j.channel_id}> · \`${j.cron}\`` +
+                `**#${j.id}** · ${j.channel_id === ALL_VOICE ? 'all voice channels' : `<#${j.channel_id}>`} · \`${j.cron}\`` +
                 (j.max_age_hours ? ` · older than ${j.max_age_hours} h` : '') +
                 (j.keep_pinned ? '' : ' · incl. pinned') +
                 `\nLast run: ${j.last_run_at ? `<t:${Math.floor(j.last_run_at / 1000)}:R>` : 'never'}`,
