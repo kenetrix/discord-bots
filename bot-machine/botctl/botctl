@@ -1,40 +1,4 @@
 #!/usr/bin/env bash
-
-# Source: https://discord.js.org/ | Github: https://github.com/kenetrix/discord-bots
-
-source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"
-color
-verb_ip6
-catch_errors
-setting_up_container
-network_check
-update_os
-
-setup_deb_based() {
-  msg_error "${APP:-Bot-Machine} runs on Alpine only. Use var_os=alpine."
-  exit 1
-}
-
-setup_alpine() {
-  msg_info "Installing Dependencies"
-  $STD apk add --no-cache \
-    bash \
-    git \
-    nodejs \
-    npm \
-    su-exec \
-    nano
-  msg_ok "Installed Dependencies"
-
-  msg_info "Creating Bot User"
-  addgroup -S bots 2>/dev/null || true
-  id bots &>/dev/null || adduser -S -D -h /home/bots -s /sbin/nologin -G bots bots
-  install -d -o bots -g bots -m 0750 /opt/bots /var/log/bots
-  msg_ok "Created Bot User"
-
-  msg_info "Installing botctl"
-cat <<'BOTCTL' >/usr/local/bin/botctl
-#!/usr/bin/env bash
 # botctl – manage the bots on the bot machine
 set -Eeuo pipefail
 
@@ -59,6 +23,15 @@ install_deps() {
   fi
 }
 
+# Refreshes botctl and the web interface from the bot machine installer.
+cmd_self_update() {
+  need_root
+  local url="${BOT_MACHINE_URL:-}"
+  [[ -n "$url" ]] || url=$(cat /etc/botctl-web/source 2>/dev/null || true)
+  [[ -n "$url" ]] || url="https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine"
+  wget -qO- "$url/install.sh" | BOT_MACHINE_URL="$url" sh -s -- update
+}
+
 usage() {
   cat <<EOF
 Usage: botctl <command> [arguments]
@@ -74,6 +47,7 @@ Usage: botctl <command> [arguments]
   set <name> <KEY>   Set KEY in the bot's .env to the value read from stdin
   logs <name>        Show the live log (Ctrl+C to quit)
   status <name>      Show the service status
+  self-update        Update botctl and the web interface themselves
   list               All bots with status
   remove <name>      Stop and delete the bot
 
@@ -269,6 +243,7 @@ case "$cmd" in
   stop|restart|status) check_name "${1:-}"; exists "$1"; rc-service "bot.$1" "$cmd" ;;
   update) check_name "${1:-}"; cmd_update "$1" ;;
   update-all) cmd_update_all ;;
+  self-update) cmd_self_update ;;
   set) check_name "${1:-}"; cmd_set "$1" "${2:-}" ;;
   logs) check_name "${1:-}"; exists "$1"; tail -n 100 -f "/var/log/bots/$1.log" ;;
   list|ls) cmd_list ;;
@@ -276,45 +251,3 @@ case "$cmd" in
   ""|-h|--help|help) usage ;;
   *) usage; exit 1 ;;
 esac
-BOTCTL
-  chmod 0755 /usr/local/bin/botctl
-  msg_ok "Installed botctl"
-
-  # Web interface for botctl (bot-machine/webui/ in this repository). Optional input: var_web_password.
-  msg_info "Installing Web Interface"
-  WEBUI_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine}"
-  [[ "$WEBUI_URL" == */bot-machine ]] || WEBUI_URL="${WEBUI_URL%/}/bot-machine"
-  WEBUI_URL="$WEBUI_URL/webui"
-  install -d -m 0750 /opt/botctl-web /etc/botctl-web
-  if wget -qO /opt/botctl-web/server.js "$WEBUI_URL/server.js" && wget -qO /opt/botctl-web/index.html "$WEBUI_URL/index.html"; then
-    WEB_PASSWORD="${var_web_password:-$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)}"
-    printf '%s\n' "$WEB_PASSWORD" >/etc/botctl-web/password
-    chmod 0600 /etc/botctl-web/password
-    cat <<'WEBSERVICE' >/etc/init.d/botctl-web
-#!/sbin/openrc-run
-description="botctl web interface"
-command="/usr/bin/node"
-command_args="/opt/botctl-web/server.js"
-command_background="yes"
-pidfile="/run/botctl-web.pid"
-output_log="/var/log/botctl-web.log"
-error_log="/var/log/botctl-web.log"
-
-depend() {
-  need net
-}
-WEBSERVICE
-    chmod 0755 /etc/init.d/botctl-web
-    $STD rc-update add botctl-web default
-    $STD rc-service botctl-web start
-    msg_ok "Installed Web Interface"
-  else
-    msg_warn "Could not download the web interface from $WEBUI_URL"
-  fi
-}
-
-run_os_setup
-
-motd_ssh
-customize
-cleanup_lxc
