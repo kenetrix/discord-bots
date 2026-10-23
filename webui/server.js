@@ -62,8 +62,16 @@ function listBots() {
       .slice(1)
       .map((line) => line.trim().split(/\s+/))
       .filter((cols) => cols.length >= 4)
-      .map(([name, status, version, ...dir]) => ({ name, status, version, directory: dir.join(' ') }));
+      .map(([name, status, version, ...dir]) => ({ name, status, version, directory: dir.join(' '), inviteUrl: safeInviteUrl(name) }));
   });
+}
+
+function safeInviteUrl(name) {
+  try {
+    return inviteUrl(readEnvKeys(name));
+  } catch {
+    return null;
+  }
 }
 
 function botDir(name) {
