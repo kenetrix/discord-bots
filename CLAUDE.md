@@ -1,10 +1,10 @@
 # Project rules
 
-Self-hosted Discord bots plus a Proxmox script for the machine they run on. The bot in `jarvis/` is called **Jarvis**; `ct/bot-machine.sh` and `install/bot-machine-install.sh` (community-scripts layout) create the LXC that runs it. See `README.md` for setup.
+Self-hosted Discord bots plus a Proxmox script for the machine they run on. The bot in `jarvis/` is called **Jarvis**; `bot-machine/ct/bot-machine.sh` and `bot-machine/install/bot-machine-install.sh` (community-scripts layout) create the LXC that runs it. See `README.md` for setup.
 
 ## Language
 
-- Everything in the repository is English: code, comments, docs, commit messages, pull requests, bot replies, log output, error messages, slash command and option names, and the messages of the scripts in `ct/` and `install/`.
+- Everything in the repository is English: code, comments, docs, commit messages, pull requests, bot replies, log output, error messages, slash command and option names, and the messages of the scripts in `bot-machine/`.
 
 ## Commits and pull requests
 
@@ -23,9 +23,10 @@ Self-hosted Discord bots plus a Proxmox script for the machine they run on. The 
 ## Checks before pushing
 
 - `cd jarvis && npm run check` loads and validates all slash commands without connecting to Discord.
-- `shellcheck -S warning ct/bot-machine.sh install/bot-machine-install.sh` for changes to the Proxmox scripts.
+- `shellcheck -S warning bot-machine/ct/bot-machine.sh bot-machine/install/bot-machine-install.sh ct/bot-machine.sh` for changes to the Proxmox scripts.
 
 ## Proxmox scripts
 
-- Keep the community-scripts structure: `ct/<app>.sh` sources the engine (`build.func`) and sets `APP` and the `var_*` defaults, `install/<app>-install.sh` sources `$FUNCTIONS_FILE_PATH` and runs inside the container. See https://community-scripts.org/docs/ct/detailed_guide and https://community-scripts.org/docs/install/detailed_guide.
+- Keep the community-scripts structure inside `bot-machine/`: `ct/<app>.sh` sources the engine (`build.func`) and sets `APP` and the `var_*` defaults, `install/<app>-install.sh` sources `$FUNCTIONS_FILE_PATH` and runs inside the container. See https://community-scripts.org/docs/ct/detailed_guide and https://community-scripts.org/docs/install/detailed_guide.
 - Credentials are read from the environment (`var_*`), never stored in the repo.
+- The top-level `ct/bot-machine.sh` is only a compatibility stub for containers created before the move into `bot-machine/`; their `update` still downloads that path. Do not put logic into it.

@@ -312,7 +312,9 @@ BOTCTL
 
   # Web interface for botctl (webui/ in this repository). Optional input: var_web_password.
   msg_info "Installing Web Interface"
-  WEBUI_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main}/webui"
+  WEBUI_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine}"
+  [[ "$WEBUI_URL" == */bot-machine ]] || WEBUI_URL="${WEBUI_URL%/}/bot-machine"
+  WEBUI_URL="$WEBUI_URL/webui"
   install -d -m 0750 /opt/botctl-web /etc/botctl-web
   if wget -qO /opt/botctl-web/server.js "$WEBUI_URL/server.js" && wget -qO /opt/botctl-web/index.html "$WEBUI_URL/index.html"; then
     WEB_PASSWORD="${var_web_password:-$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)}"
