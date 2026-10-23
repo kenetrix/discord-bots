@@ -10,10 +10,10 @@ source "$_cs_boot" 2>/dev/null || source <(curl -fsSL "${COMMUNITY_SCRIPTS_CORE_
 APP="Bot-Machine"
 var_tags="${var_tags:-bots;discord;nodejs}"
 var_cpu="${var_cpu:-1}"
-var_ram="${var_ram:-1024}"
-var_disk="${var_disk:-8}"
-var_os="${var_os:-debian}"
-var_version="${var_version:-13}"
+var_ram="${var_ram:-256}"
+var_disk="${var_disk:-1}"
+var_os="${var_os:-alpine}"
+var_version="${var_version:-3.24}"
 var_unprivileged="${var_unprivileged:-1}"
 
 # Application settings. The install script reads them from the environment; all are optional.
@@ -31,11 +31,7 @@ variables
 color
 catch_errors
 
-function update_script() {
-  header_info
-  check_container_storage
-  check_container_resources
-
+update_alpine() {
   if [[ ! -x /usr/local/bin/botctl || ! -d /opt/bots ]]; then
     msg_error "No ${APP} Installation Found!"
     exit
@@ -45,13 +41,19 @@ function update_script() {
   $STD botctl update-all
   msg_ok "Updated Bots"
 
-  msg_info "Updating OS Packages"
-  $STD apt update
-  $STD apt -y upgrade
-  msg_ok "Updated OS Packages"
+  msg_info "Updating Alpine Packages"
+  $STD apk -U upgrade
+  msg_ok "Updated Alpine Packages"
 
   msg_ok "Updated successfully!"
   exit
+}
+
+function update_script() {
+  header_info
+  check_container_storage
+  check_container_resources
+  run_os_update
 }
 
 start

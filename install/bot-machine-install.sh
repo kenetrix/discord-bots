@@ -10,23 +10,29 @@ setting_up_container
 network_check
 update_os
 
-msg_info "Installing Dependencies"
-$STD apt install -y \
-  git \
-  ca-certificates \
-  build-essential \
-  python3 \
-  nano
-msg_ok "Installed Dependencies"
+setup_deb_based() {
+  msg_error "${APP:-Bot-Machine} runs on Alpine only. Use var_os=alpine."
+  exit 1
+}
 
-NODE_VERSION="22" setup_nodejs
+setup_alpine() {
+  msg_info "Installing Dependencies"
+  $STD apk add --no-cache \
+    bash \
+    git \
+    nodejs \
+    npm \
+    su-exec \
+    nano
+  msg_ok "Installed Dependencies"
 
-msg_info "Creating Bot User"
-id bots &>/dev/null || useradd --system --create-home --home-dir /home/bots --shell /usr/sbin/nologin bots
-install -d -o bots -g bots -m 0750 /opt/bots
-msg_ok "Created Bot User"
+  msg_info "Creating Bot User"
+  addgroup -S bots 2>/dev/null || true
+  id bots &>/dev/null || adduser -S -D -h /home/bots -s /sbin/nologin -G bots bots
+  install -d -o bots -g bots -m 0750 /opt/bots /var/log/bots
+  msg_ok "Created Bot User"
 
-msg_info "Installing botctl"
+  msg_info "Installing botctl"
 cat <<'BOTCTL' >/usr/local/bin/botctl
 #!/usr/bin/env bash
 # botctl – manage the bots on the bot machine
@@ -36,11 +42,12 @@ BOTS_DIR=/opt/bots
 BOT_USER=bots
 
 die() { echo "Error: $*" >&2; exit 1; }
-as_bot() { runuser -u "$BOT_USER" -- env HOME="/home/$BOT_USER" "$@"; }
+as_bot() { su-exec "$BOT_USER" env HOME="/home/$BOT_USER" "$@"; }
 need_root() { [[ $EUID -eq 0 ]] || die "Please run as root."; }
 check_name() { [[ "${1:-}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "Invalid bot name '${1:-}' (only a-z, 0-9, -)."; }
 exists() { [[ -d "$BOTS_DIR/$1" ]] || die "Bot '$1' does not exist. 'botctl list' shows all bots."; }
-app_dir() { systemctl show -p WorkingDirectory --value "bot@$1"; }
+app_dir() { sed -n 's/^directory="\(.*\)"$/\1/p' "/etc/init.d/bot.$1"; }
+is_active() { rc-service "bot.$1" status >/dev/null 2>&1; }
 
 install_deps() {
   local dir="$1"
@@ -65,7 +72,7 @@ Usage: botctl <command> [arguments]
   update-all         Update every installed bot
   set <name> <KEY>   Set KEY in the bot's .env to the value read from stdin
   logs <name>        Show the live log (Ctrl+C to quit)
-  status <name>      Show the systemd status
+  status <name>      Show the service status
   list               All bots with status
   remove <name>      Stop and delete the bot
 
@@ -104,14 +111,26 @@ cmd_add() {
     chmod 0600 "$dir/.env"
   fi
 
-  install -d "/etc/systemd/system/bot@$name.service.d"
-  cat > "/etc/systemd/system/bot@$name.service.d/override.conf" <<EOF
-[Service]
-WorkingDirectory=$dir
-EnvironmentFile=-$dir/.env
+  # The bot reads its own .env (dotenv), so the service only needs the working directory.
+  cat > "/etc/init.d/bot.$name" <<EOF
+#!/sbin/openrc-run
+description="Bot $name"
+directory="$dir"
+command="/usr/bin/npm"
+command_args="start --silent"
+command_user="$BOT_USER:$BOT_USER"
+command_background="yes"
+pidfile="/run/bot.$name.pid"
+output_log="/var/log/bots/$name.log"
+error_log="/var/log/bots/$name.log"
+export NODE_ENV=production
+
+depend() {
+  need net
+}
 EOF
-  systemctl daemon-reload
-  systemctl enable --quiet "bot@$name"
+  chmod 0755 "/etc/init.d/bot.$name"
+  rc-update add "bot.$name" default >/dev/null
 
   echo
   echo "Bot '$name' installed in $dir"
@@ -124,9 +143,9 @@ cmd_env() {
   exists "$1"
   local dir; dir=$(app_dir "$1")
   "${EDITOR:-nano}" "$dir/.env"
-  if systemctl is-active --quiet "bot@$1"; then
+  if is_active "$1"; then
     read -rp "Restart the bot now? [Y/n] " a
-    [[ "${a,,}" == "n" ]] || systemctl restart "bot@$1"
+    [[ "${a,,}" == "n" ]] || rc-service "bot.$1" restart
   fi
 }
 
@@ -135,7 +154,7 @@ register_commands() {
   (cd "$dir" && as_bot npm run --silent --if-present deploy-commands) || echo "Warning: deploy-commands failed."
 }
 
-cmd_start() { exists "$1"; register_commands "$1"; systemctl start "bot@$1"; echo "Started. Log: botctl logs $1"; }
+cmd_start() { exists "$1"; register_commands "$1"; rc-service "bot.$1" start; echo "Started. Log: botctl logs $1"; }
 
 cmd_update() {
   need_root; exists "$1"
@@ -148,8 +167,8 @@ cmd_update() {
   echo "$1: $before → $after"
   install_deps "$dir"
   register_commands "$1"
-  if systemctl is-active --quiet "bot@$1"; then
-    systemctl restart "bot@$1"
+  if is_active "$1"; then
+    rc-service "bot.$1" restart
     echo "Restarted."
   else
     echo "Not running, so not restarted. Start it with: botctl start $1"
@@ -192,7 +211,7 @@ cmd_list() {
   shopt -s nullglob
   for root in "$BOTS_DIR"/*/; do
     local name; name=$(basename "$root")
-    local state; state=$(systemctl is-active "bot@$name" 2>/dev/null || true)
+    local state=stopped; is_active "$name" && state=started
     local rev; rev=$(as_bot git -C "$root" rev-parse --short HEAD 2>/dev/null || echo "-")
     printf '%-20s %-10s %-9s %s\n' "$name" "$state" "$rev" "$(app_dir "$name")"
   done
@@ -202,9 +221,9 @@ cmd_remove() {
   need_root; exists "$1"
   read -rp "Really delete bot '$1' including its data? Type the name to confirm: " a
   [[ "$a" == "$1" ]] || die "Aborted."
-  systemctl disable --now --quiet "bot@$1" || true
-  rm -rf "/etc/systemd/system/bot@$1.service.d" "${BOTS_DIR:?}/$1"
-  systemctl daemon-reload
+  rc-service "bot.$1" stop >/dev/null 2>&1 || true
+  rc-update del "bot.$1" default >/dev/null 2>&1 || true
+  rm -rf "/etc/init.d/bot.$1" "/var/log/bots/$1.log" "${BOTS_DIR:?}/$1"
   echo "Bot '$1' deleted."
 }
 
@@ -213,75 +232,52 @@ case "$cmd" in
   add) cmd_add "$@" ;;
   env) check_name "${1:-}"; cmd_env "$1" ;;
   start) check_name "${1:-}"; cmd_start "$1" ;;
-  stop|restart|status) check_name "${1:-}"; exists "$1"; systemctl "$cmd" "bot@$1" ;;
+  stop|restart|status) check_name "${1:-}"; exists "$1"; rc-service "bot.$1" "$cmd" ;;
   update) check_name "${1:-}"; cmd_update "$1" ;;
   update-all) cmd_update_all ;;
   set) check_name "${1:-}"; cmd_set "$1" "${2:-}" ;;
-  logs) check_name "${1:-}"; exists "$1"; journalctl -u "bot@$1" -n 100 -f ;;
+  logs) check_name "${1:-}"; exists "$1"; tail -n 100 -f "/var/log/bots/$1.log" ;;
   list|ls) cmd_list ;;
   remove|rm) check_name "${1:-}"; cmd_remove "$1" ;;
   ""|-h|--help|help) usage ;;
   *) usage; exit 1 ;;
 esac
 BOTCTL
-chmod 0755 /usr/local/bin/botctl
-msg_ok "Installed botctl"
+  chmod 0755 /usr/local/bin/botctl
+  msg_ok "Installed botctl"
 
-msg_info "Creating Service Template"
-cat <<'UNIT' >/etc/systemd/system/bot@.service
-[Unit]
-Description=Bot %i
-After=network-online.target
-Wants=network-online.target
+  # Optional inputs, exported by ct/bot-machine.sh: var_bot_name, var_bot_repo, var_bot_path,
+  # var_bot_repo_token, var_discord_token, var_discord_client_id, var_discord_guild_id
+  BOT_NAME="${var_bot_name:-jarvis}"
+  BOT_REPO="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
+  BOT_PATH="${var_bot_path-bot}"
+  if [[ -n "${var_bot_repo_token:-}" ]]; then
+    BOT_REPO="${BOT_REPO/https:\/\//https:\/\/x-access-token:${var_bot_repo_token}@}"
+  fi
 
-[Service]
-Type=simple
-User=bots
-Group=bots
-# botctl sets WorkingDirectory and EnvironmentFile per bot in bot@<name>.service.d/
-WorkingDirectory=/opt/bots/%i
-ExecStart=/usr/bin/npm start --silent
-Environment=NODE_ENV=production
-Restart=on-failure
-RestartSec=5
-KillMode=mixed
-NoNewPrivileges=true
+  msg_info "Installing Bot ${BOT_NAME}"
+  if $STD botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
+    msg_ok "Installed Bot ${BOT_NAME}"
 
-[Install]
-WantedBy=multi-user.target
-UNIT
-systemctl daemon-reload
-msg_ok "Created Service Template"
-
-# Optional inputs, exported by ct/bot-machine.sh: var_bot_name, var_bot_repo, var_bot_path,
-# var_bot_repo_token, var_discord_token, var_discord_client_id, var_discord_guild_id
-BOT_NAME="${var_bot_name:-jarvis}"
-BOT_REPO="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
-BOT_PATH="${var_bot_path-bot}"
-if [[ -n "${var_bot_repo_token:-}" ]]; then
-  BOT_REPO="${BOT_REPO/https:\/\//https:\/\/x-access-token:${var_bot_repo_token}@}"
-fi
-
-msg_info "Installing Bot ${BOT_NAME}"
-if $STD botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
-  msg_ok "Installed Bot ${BOT_NAME}"
-
-  if [[ -n "${var_discord_token:-}" && -n "${var_discord_client_id:-}" ]]; then
-    msg_info "Configuring and Starting ${BOT_NAME}"
-    printf '%s\n' "$var_discord_token" | botctl set "$BOT_NAME" DISCORD_TOKEN
-    printf '%s\n' "$var_discord_client_id" | botctl set "$BOT_NAME" CLIENT_ID
-    [[ -n "${var_discord_guild_id:-}" ]] && printf '%s\n' "$var_discord_guild_id" | botctl set "$BOT_NAME" GUILD_ID
-    if $STD botctl start "$BOT_NAME"; then
-      msg_ok "Configured and Started ${BOT_NAME}"
+    if [[ -n "${var_discord_token:-}" && -n "${var_discord_client_id:-}" ]]; then
+      msg_info "Configuring and Starting ${BOT_NAME}"
+      printf '%s\n' "$var_discord_token" | botctl set "$BOT_NAME" DISCORD_TOKEN
+      printf '%s\n' "$var_discord_client_id" | botctl set "$BOT_NAME" CLIENT_ID
+      [[ -n "${var_discord_guild_id:-}" ]] && printf '%s\n' "$var_discord_guild_id" | botctl set "$BOT_NAME" GUILD_ID
+      if $STD botctl start "$BOT_NAME"; then
+        msg_ok "Configured and Started ${BOT_NAME}"
+      else
+        msg_warn "Could not start ${BOT_NAME}; check the values with: botctl env ${BOT_NAME}"
+      fi
     else
-      msg_warn "Could not start ${BOT_NAME}; check the values with: botctl env ${BOT_NAME}"
+      msg_warn "No Discord credentials given. Finish with: botctl env ${BOT_NAME} && botctl start ${BOT_NAME}"
     fi
   else
-    msg_warn "No Discord credentials given. Finish with: botctl env ${BOT_NAME} && botctl start ${BOT_NAME}"
+    msg_warn "Could not install bot ${BOT_NAME} from ${BOT_REPO//\/\/*@/\/\/***@}. Add it later with: botctl add <name> <git-url> --path <subfolder>"
   fi
-else
-  msg_warn "Could not install bot ${BOT_NAME} from ${BOT_REPO//\/\/*@/\/\/***@}. Add it later with: botctl add <name> <git-url> --path <subfolder>"
-fi
+}
+
+run_os_setup
 
 motd_ssh
 customize
