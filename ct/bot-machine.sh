@@ -22,6 +22,8 @@ export var_bot_name="${var_bot_name:-jarvis}"
 export var_bot_repo="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
 export var_bot_path="${var_bot_path-bot}"
 export var_bot_repo_token="${var_bot_repo_token:-}"
+# Local mode: path on the Proxmox host to a .tgz of the bot repo; replaces the git clone
+export var_bot_archive="${var_bot_archive:-}"
 export var_discord_token="${var_discord_token:-}"
 export var_discord_client_id="${var_discord_client_id:-}"
 export var_discord_guild_id="${var_discord_guild_id:-}"
@@ -54,9 +56,36 @@ function update_script() {
   exit
 }
 
+if [[ -n "$var_bot_archive" && ! -f "$var_bot_archive" ]]; then
+  echo "var_bot_archive: file not found: $var_bot_archive" >&2
+  exit 1
+fi
+
 start
 build_container
 description
+
+if [[ -n "$var_bot_archive" ]]; then
+  msg_info "Installing Bot ${var_bot_name} from ${var_bot_archive}"
+  pct push "$CTID" "$var_bot_archive" /tmp/bot-source.tgz
+  if pct exec "$CTID" -- botctl add "$var_bot_name" --archive /tmp/bot-source.tgz ${var_bot_path:+--path "$var_bot_path"} >/dev/null; then
+    msg_ok "Installed Bot ${var_bot_name}"
+    if [[ -n "$var_discord_token" && -n "$var_discord_client_id" ]]; then
+      msg_info "Configuring and Starting ${var_bot_name}"
+      printf '%s\n' "$var_discord_token" | pct exec "$CTID" -- botctl set "$var_bot_name" DISCORD_TOKEN
+      printf '%s\n' "$var_discord_client_id" | pct exec "$CTID" -- botctl set "$var_bot_name" CLIENT_ID
+      [[ -n "$var_discord_guild_id" ]] && printf '%s\n' "$var_discord_guild_id" | pct exec "$CTID" -- botctl set "$var_bot_name" GUILD_ID
+      if pct exec "$CTID" -- botctl start "$var_bot_name" >/dev/null; then
+        msg_ok "Configured and Started ${var_bot_name}"
+      else
+        msg_warn "Could not start ${var_bot_name}; check the values with: botctl env ${var_bot_name}"
+      fi
+    fi
+  else
+    msg_warn "Could not install bot ${var_bot_name} from the archive"
+  fi
+  pct exec "$CTID" -- rm -f /tmp/bot-source.tgz
+fi
 
 msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"

@@ -57,6 +57,8 @@ Usage: botctl <command> [arguments]
 
   add <name> <git-url> [--path <subfolder>] [--branch <branch>]
                      Install a bot from a git repo
+  add <name> --archive <file.tgz> [--path <subfolder>]
+                     Install a bot from a local tarball (no git needed)
   env <name>         Edit the bot's .env (token etc.)
   start <name>       Register slash commands (if available) and start
   stop <name>        Stop the bot
@@ -76,22 +78,31 @@ EOF
 
 cmd_add() {
   need_root
-  local name="${1:-}" url="${2:-}" sub="" branch=""
-  shift 2 || true
+  local name="${1:-}" url="" archive="" sub="" branch=""
+  shift || true
+  [[ "${1:-}" == --* ]] || { url="${1:-}"; shift || true; }
   while [[ $# -gt 0 ]]; do
     case "$1" in
       --path) sub="${2:-}"; shift 2 ;;
       --branch) branch="${2:-}"; shift 2 ;;
+      --archive) archive="${2:-}"; shift 2 ;;
       *) die "Unknown option: $1" ;;
     esac
   done
   check_name "$name"
-  [[ -n "$url" ]] || die "Git URL is missing."
+  [[ -n "$url" || -n "$archive" ]] || die "Git URL or --archive is missing."
   [[ -e "$BOTS_DIR/$name" ]] && die "Bot '$name' already exists."
 
   local root="$BOTS_DIR/$name"
-  echo "Cloning ${url//\/\/*@/\/\/***@} …"
-  as_bot git clone --quiet --depth 1 ${branch:+--branch "$branch"} "$url" "$root"
+  if [[ -n "$archive" ]]; then
+    [[ -f "$archive" ]] || die "Archive '$archive' not found."
+    echo "Extracting $archive …"
+    as_bot mkdir "$root"
+    as_bot tar -xzf "$archive" -C "$root" || { rm -rf "$root"; die "Could not extract $archive."; }
+  else
+    echo "Cloning ${url//\/\/*@/\/\/***@} …"
+    as_bot git clone --quiet --depth 1 ${branch:+--branch "$branch"} "$url" "$root"
+  fi
   local dir="$root${sub:+/${sub#/}}"
   [[ -f "$dir/package.json" ]] || { rm -rf "$root"; die "No package.json in $dir."; }
 
@@ -140,6 +151,10 @@ cmd_start() { exists "$1"; register_commands "$1"; systemctl start "bot@$1"; ech
 cmd_update() {
   need_root; exists "$1"
   local root="$BOTS_DIR/$1" dir; dir=$(app_dir "$1")
+  if [[ ! -d "$root/.git" ]]; then
+    echo "$1: installed from an archive, skipping. Reinstall it with 'botctl add --archive' to update."
+    return 0
+  fi
   local branch; branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
   local before; before=$(as_bot git -C "$root" rev-parse --short HEAD)
   as_bot git -C "$root" fetch --quiet --depth 1 origin "$branch"
@@ -254,7 +269,7 @@ systemctl daemon-reload
 msg_ok "Created Service Template"
 
 # Optional inputs, exported by ct/bot-machine.sh: var_bot_name, var_bot_repo, var_bot_path,
-# var_bot_repo_token, var_discord_token, var_discord_client_id, var_discord_guild_id
+# var_bot_repo_token, var_bot_archive, var_discord_token, var_discord_client_id, var_discord_guild_id
 BOT_NAME="${var_bot_name:-jarvis}"
 BOT_REPO="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
 BOT_PATH="${var_bot_path-bot}"
@@ -262,25 +277,29 @@ if [[ -n "${var_bot_repo_token:-}" ]]; then
   BOT_REPO="${BOT_REPO/https:\/\//https:\/\/x-access-token:${var_bot_repo_token}@}"
 fi
 
-msg_info "Installing Bot ${BOT_NAME}"
-if $STD botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
-  msg_ok "Installed Bot ${BOT_NAME}"
+if [[ -n "${var_bot_archive:-}" ]]; then
+  msg_ok "Bot ${BOT_NAME} will be installed from the local archive by the host script"
+else
+  msg_info "Installing Bot ${BOT_NAME}"
+  if $STD botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
+    msg_ok "Installed Bot ${BOT_NAME}"
 
-  if [[ -n "${var_discord_token:-}" && -n "${var_discord_client_id:-}" ]]; then
-    msg_info "Configuring and Starting ${BOT_NAME}"
-    printf '%s\n' "$var_discord_token" | botctl set "$BOT_NAME" DISCORD_TOKEN
-    printf '%s\n' "$var_discord_client_id" | botctl set "$BOT_NAME" CLIENT_ID
-    [[ -n "${var_discord_guild_id:-}" ]] && printf '%s\n' "$var_discord_guild_id" | botctl set "$BOT_NAME" GUILD_ID
-    if $STD botctl start "$BOT_NAME"; then
-      msg_ok "Configured and Started ${BOT_NAME}"
+    if [[ -n "${var_discord_token:-}" && -n "${var_discord_client_id:-}" ]]; then
+      msg_info "Configuring and Starting ${BOT_NAME}"
+      printf '%s\n' "$var_discord_token" | botctl set "$BOT_NAME" DISCORD_TOKEN
+      printf '%s\n' "$var_discord_client_id" | botctl set "$BOT_NAME" CLIENT_ID
+      [[ -n "${var_discord_guild_id:-}" ]] && printf '%s\n' "$var_discord_guild_id" | botctl set "$BOT_NAME" GUILD_ID
+      if $STD botctl start "$BOT_NAME"; then
+        msg_ok "Configured and Started ${BOT_NAME}"
+      else
+        msg_warn "Could not start ${BOT_NAME}; check the values with: botctl env ${BOT_NAME}"
+      fi
     else
-      msg_warn "Could not start ${BOT_NAME}; check the values with: botctl env ${BOT_NAME}"
+      msg_warn "No Discord credentials given. Finish with: botctl env ${BOT_NAME} && botctl start ${BOT_NAME}"
     fi
   else
-    msg_warn "No Discord credentials given. Finish with: botctl env ${BOT_NAME} && botctl start ${BOT_NAME}"
+    msg_warn "Could not install bot ${BOT_NAME} from ${BOT_REPO//\/\/*@/\/\/***@}. Add it later with: botctl add <name> <git-url> --path <subfolder>"
   fi
-else
-  msg_warn "Could not install bot ${BOT_NAME} from ${BOT_REPO//\/\/*@/\/\/***@}. Add it later with: botctl add <name> <git-url> --path <subfolder>"
 fi
 
 motd_ssh

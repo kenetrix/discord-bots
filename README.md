@@ -53,6 +53,26 @@ Once the repository is public, the community-scripts one-liner works as well:
 bash -c "$(curl -fsSL https://raw.githubusercontent.com/kenetrix/discord-bots/main/ct/bot-machine.sh)"
 ```
 
+### Offline test without git or curl on the Proxmox host
+
+Build two archives on your PC: the bot (this repo) and the [community-scripts engine](https://github.com/community-scripts/core) (download `https://github.com/community-scripts/core/archive/refs/heads/main.tar.gz` in the browser), then copy both to the host, for example with `scp` or the web UI upload:
+
+```bash
+tar czf bot-source.tgz --exclude=.git --exclude=node_modules bot      # inside this repo
+scp bot-source.tgz discord-bots.tgz core.tar.gz root@<proxmox>:/root/   # discord-bots.tgz: the whole repo as tar
+```
+
+On the host:
+
+```bash
+mkdir -p /root/test && cd /root/test
+tar xzf ../discord-bots.tgz && tar xzf ../core.tar.gz && mv core-main core
+COMMUNITY_SCRIPTS_CORE_DIR=/root/test/core var_bot_archive=/root/bot-source.tgz \
+  bash discord-bots/ct/bot-machine.sh
+```
+
+`var_bot_archive` replaces the git clone: the host pushes the tarball into the container and installs the bot from it. The container itself still needs internet for apt, Node.js and `npm install`. Bots installed this way are skipped by `botctl update`; to update, copy a new tarball in and run `botctl add` again after `botctl remove`.
+
 Defaults: Debian 13, 1 core, 1024 MB RAM, 8 GB disk, unprivileged. Override them with the usual `var_*` variables, for example `var_ram=2048 var_disk=16 bash discord-bots/ct/bot-machine.sh`.
 
 The install script sets up Node.js, git, `botctl` and the first bot. It reads these optional inputs from the environment; nothing is stored in the repo or in the defaults file:
@@ -62,6 +82,7 @@ The install script sets up Node.js, git, `botctl` and the first bot. It reads th
 | `var_bot_name` | Name of the first bot | `jarvis` |
 | `var_bot_repo` | Git URL of the bot | this repository |
 | `var_bot_path` | Subfolder with the `package.json` | `bot` |
+| `var_bot_archive` | Path of a `.tgz` of the bot on the Proxmox host; installs from it instead of git | none |
 | `var_bot_repo_token` | GitHub token for a private repo (stored in the bot's `.git/config`) | none |
 | `var_discord_token`, `var_discord_client_id`, `var_discord_guild_id` | Written to the bot's `.env`; with token and client ID the bot is started right away | none |
 
