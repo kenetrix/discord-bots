@@ -1,4 +1,5 @@
 // Builds the /scout messages: a compact overview for the whole team and detail views behind buttons.
+// Cards and detail views use the same building blocks (header, pool, matchup), the detail view just shows more.
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { opggUrl } = require('./opgg');
 
@@ -7,6 +8,7 @@ const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPO
 const ROLE_ICON = { TOP: '⛰️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
 const ROLE_ORDER = Object.keys(ROLE_LABEL);
 const COLOR = 0xc89b3c;
+const LEGEND = '~~struck~~ = we ban it · ➜ = likely pick after our bans';
 
 const escapeMarkdown = (text) => text.replace(/[\\[\]()*_~`|>]/g, '\\$&');
 const role = (r) => `${ROLE_ICON[r] ?? ''} ${ROLE_LABEL[r] ?? '?'}`;
@@ -20,17 +22,45 @@ function shortRank(rank) {
   return [tier.charAt(0) + tier.slice(1).toLowerCase(), ...rest].join(' ');
 }
 
-/** Five dots, filled in proportion to the player's threat compared with the most dangerous enemy. */
-function threatDots(score, max) {
-  const filled = max ? Math.max(1, Math.round((score / max) * 5)) : 0;
-  return '●'.repeat(filled) + '○'.repeat(5 - filled);
+/** "Master 26 LP · 51 % WR", or "Unranked". */
+const rankLine = (rank) => [shortRank(rank), rank?.split(', ')[1]].filter(Boolean).join(' · ');
+
+const THREAT_LEVELS = [
+  { min: 0.75, label: '🔴 High threat' },
+  { min: 0.45, label: '🟠 Medium threat' },
+  { min: 0, label: '🟢 Low threat' },
+];
+
+/** The player's threat compared with the most dangerous enemy, as a label. */
+function threatLevel(score, max) {
+  const share = max ? score / max : 0;
+  return THREAT_LEVELS.find((level) => share >= level.min).label;
 }
 
-/** "expect Kayle → pick Malphite or Yasuo", or what is known when data is missing. */
-function matchup(against, pick, alternative) {
-  if (!against) return 'no pick predicted';
-  if (!pick) return `expect **${against}**, no counter data`;
-  return `expect **${against}** → pick **${pick}**${alternative ? ` or ${alternative}` : ''}`;
+/**
+ * The champion pool in one line or one line per champion: champions we ban are struck through and
+ * the likely pick after the bans is marked, so both read as one list. A likely pick from recent games
+ * that is not in the season pool is added at the end.
+ */
+function poolText(champions, banned, likely, { limit, stats }) {
+  const shown = champions.slice(0, limit);
+  if (likely && !shown.some((c) => c.name === likely)) {
+    shown.push(champions.find((c) => c.name === likely) ?? { name: likely, games: 0, wins: 0, recent: true });
+  }
+  const entries = shown.map((c) => {
+    const name = banned.has(c.name) ? `~~${c.name}~~` : c.name === likely ? `➜ **${c.name}**` : c.name;
+    if (!stats) return name;
+    return c.recent ? `${name} (recent games)` : `${name} · ${c.games} games · ${winRate(c)} %`;
+  });
+  if (!entries.length) return 'no ranked games this season';
+  return entries.join(stats ? '\n' : ' · ');
+}
+
+/** "➜ Veigar · our pick LeBlanc or Syndra", or what is known when data is missing. */
+function matchupText(likely, pick, alternative) {
+  if (!likely) return 'no pick predicted';
+  if (!pick) return `➜ **${likely}** · no counter data`;
+  return `➜ **${likely}** · our pick **${pick}**${alternative ? ` or ${alternative}` : ''}`;
 }
 
 /**
@@ -49,11 +79,11 @@ function buildReport({ id, region, players, picks, comp, flex, threats, bans, al
         counter: comp.find((c) => c.role === pick.role) ?? null,
         second: pick.second,
         flex: flex.find((f) => f.player === player.riotId) ?? null,
-        dots: threatDots(threats.get(player.riotId)?.score ?? 0, maxThreat),
+        threat: threatLevel(threats.get(player.riotId)?.score ?? 0, maxThreat),
       };
     })
     .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
-  return { id, region, enemies, bans, alternatives, plan, failed };
+  return { id, region, enemies, banned: new Set(bans.map((b) => b.champion)), bans, alternatives, plan, failed };
 }
 
 function buttons(report, { back = false } = {}) {
@@ -75,6 +105,9 @@ function buttons(report, { back = false } = {}) {
   return [players, more];
 }
 
+/** Players that could not be scouted, named first so nobody misses them. */
+const notScouted = (failed) => (failed.length ? `⚠️ **Not scouted:**\n${failed.map((f) => `• ${f}`).join('\n')}\n\n` : '');
+
 /** The message for the whole team: bans first, then one card per enemy, details behind the buttons. */
 function overview(report, options) {
   const banList = report.bans.map((b) => `**${b.champion}**`).join(' · ') || 'not enough data';
@@ -82,53 +115,53 @@ function overview(report, options) {
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
     .setColor(COLOR)
-    .setDescription(`🚫 **Ban:** ${banList}${backup}`)
+    .setDescription(`${notScouted(report.failed)}🚫 **Ban:** ${banList}${backup}`.slice(0, 4096))
     .addFields(
       report.enemies.map((e) => ({
-        name: `${role(e.role)}  ${e.dots}`,
+        name: `${role(e.role)} · ${e.threat}`,
         value: [
           link(e.player, report.region),
-          shortRank(e.player.rank),
-          e.player.champions.slice(0, 3).map((c) => c.name).join(' · ') || 'no ranked games',
-          e.second ? `2nd: ${role(e.second.role)}` : '2nd: none',
-          e.champion ? `▶ After bans: **${e.champion}** → pick **${e.counter?.pick?.name ?? '?'}**` : '▶ no pick predicted',
+          rankLine(e.player.rank),
+          poolText(e.player.champions, report.banned, e.champion, { limit: 3, stats: false }),
+          e.counter?.pick ? `🎯 Our pick: **${e.counter.pick.name}**` : '🎯 Our pick: no counter data',
+          e.second ? `2nd role: ${role(e.second.role)}` : '2nd role: none',
         ].join('\n'),
         inline: true,
       })),
     );
-  if (report.failed.length) embed.addFields({ name: 'Not scouted', value: report.failed.join('\n').slice(0, 1024) });
   const guessed = report.enemies.some((e) => e.player.guessedTag) ? ' · * tag guessed' : '';
-  embed.setFooter({ text: `Tap a player or Bans for details · ● threat compared with the others${guessed}` });
+  embed.setFooter({ text: `${LEGEND}${guessed}\nTap a player or Bans for details.` });
   return { embeds: [embed], components: buttons(report, options) };
 }
 
-/** Everything about one enemy: roles, champion pool, expected picks and our answers. */
+/** Everything about one enemy, in the same order as their card: rank, pool, matchups, roles. */
 function playerView(report, index) {
   const e = report.enemies[index];
   const p = e.player;
+  const roleGames = (r) => p.roles.find((x) => x.role === r)?.games ?? 0;
+  const recentGames = p.roles.reduce((sum, r) => sum + r.games, 0);
   const roles = p.roles.length ? p.roles.map((r) => `${role(r.role)} ${r.games}`).join(' · ') : 'no recent games';
-  const pool =
-    p.champions
-      .slice(0, 5)
-      .map((c) => `**${c.name}** ${c.games} games · ${winRate(c)} %`)
-      .join('\n') || 'no ranked games this season';
-  const secondLine = e.second
-    ? `${role(e.second.role)}: ${matchup(e.second.champion, e.flex?.pick?.name)}`
-    : 'Plays only one role, so bans on them hit harder.';
   const aimed = report.bans.filter((b) => b.player === p.riotId).map((b) => b.champion);
 
   const embed = new EmbedBuilder()
     .setTitle(`${role(e.role)} · ${p.riotId}`)
     .setURL(opggUrl(p.riotId, report.region))
     .setColor(COLOR)
-    .setDescription(`${[shortRank(p.rank), p.rank?.split(', ')[1]].filter(Boolean).join(' · ')}\nThreat ${e.dots}${p.guessedTag ? '\nTag guessed from the region.' : ''}`)
+    .setDescription(`${rankLine(p.rank)}\n${e.threat}${p.guessedTag ? '\nTag guessed from the region.' : ''}`)
     .addFields(
-      { name: 'Roles (last 20 games)', value: roles },
-      { name: 'Most played this season', value: pool },
-      { name: `Main role: ${role(e.role)}`, value: matchup(e.champion, e.counter?.pick?.name, e.counter?.alternative?.name) },
-      { name: 'Second role', value: secondLine },
+      { name: 'Champion pool (ranked, this season)', value: poolText(p.champions, report.banned, e.champion, { limit: 6, stats: true }) },
+      {
+        name: `Main role: ${role(e.role)} (${roleGames(e.role)} of ${recentGames} recent games)`,
+        value: matchupText(e.champion, e.counter?.pick?.name, e.counter?.alternative?.name),
+      },
+      {
+        name: e.second ? `Second role: ${role(e.second.role)} (${roleGames(e.second.role)} of ${recentGames} recent games)` : 'Second role',
+        value: e.second ? matchupText(e.second.champion, e.flex?.pick?.name) : 'none, so our bans hit harder',
+      },
+      { name: 'Roles in the last 20 games', value: roles },
     );
   if (aimed.length) embed.addFields({ name: 'Our bans on them', value: aimed.join(' · ') });
+  embed.setFooter({ text: LEGEND });
   return { embeds: [embed], components: buttons(report, { back: true }) };
 }
 
@@ -160,4 +193,4 @@ function render(report, view) {
   return index !== undefined && report.enemies[index] ? playerView(report, Number(index)) : null;
 }
 
-module.exports = { buildReport, overview, render, parseButton, shortRank, threatDots };
+module.exports = { buildReport, overview, render, parseButton, shortRank, threatLevel, poolText };
