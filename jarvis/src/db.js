@@ -12,15 +12,6 @@ db.exec(`
     guild_id TEXT PRIMARY KEY,
     modlog_channel_id TEXT
   );
-  CREATE TABLE IF NOT EXISTS warnings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    guild_id TEXT NOT NULL,
-    user_id TEXT NOT NULL,
-    moderator_id TEXT NOT NULL,
-    reason TEXT NOT NULL,
-    created_at INTEGER NOT NULL
-  );
-  CREATE INDEX IF NOT EXISTS idx_warnings_user ON warnings (guild_id, user_id);
   CREATE TABLE IF NOT EXISTS cleaner_jobs (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     guild_id TEXT NOT NULL,
@@ -33,24 +24,20 @@ db.exec(`
   );
 `);
 
+// Databases created before keep_latest existed get the column added.
+if (!db.prepare('PRAGMA table_info(cleaner_jobs)').all().some((c) => c.name === 'keep_latest')) {
+  db.exec('ALTER TABLE cleaner_jobs ADD COLUMN keep_latest INTEGER NOT NULL DEFAULT 0');
+}
+
 const stmts = {
   getSettings: db.prepare('SELECT * FROM guild_settings WHERE guild_id = ?'),
   setModlog: db.prepare(`
     INSERT INTO guild_settings (guild_id, modlog_channel_id) VALUES (?, ?)
     ON CONFLICT(guild_id) DO UPDATE SET modlog_channel_id = excluded.modlog_channel_id
   `),
-  addWarning: db.prepare(
-    'INSERT INTO warnings (guild_id, user_id, moderator_id, reason, created_at) VALUES (?, ?, ?, ?, ?)',
-  ),
-  listWarnings: db.prepare(
-    'SELECT * FROM warnings WHERE guild_id = ? AND user_id = ? ORDER BY created_at DESC LIMIT 25',
-  ),
-  countWarnings: db.prepare('SELECT COUNT(*) AS n FROM warnings WHERE guild_id = ? AND user_id = ?'),
-  deleteWarning: db.prepare('DELETE FROM warnings WHERE guild_id = ? AND id = ?'),
-  clearWarnings: db.prepare('DELETE FROM warnings WHERE guild_id = ? AND user_id = ?'),
   addJob: db.prepare(`
-    INSERT INTO cleaner_jobs (guild_id, channel_id, cron, max_age_hours, keep_pinned, created_by)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO cleaner_jobs (guild_id, channel_id, cron, max_age_hours, keep_pinned, keep_latest, created_by)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
   `),
   getJob: db.prepare('SELECT * FROM cleaner_jobs WHERE guild_id = ? AND id = ?'),
   listJobs: db.prepare('SELECT * FROM cleaner_jobs WHERE guild_id = ? ORDER BY id'),

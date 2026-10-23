@@ -161,18 +161,42 @@ register_commands() {
 
 cmd_start() { exists "$1"; register_commands "$1"; rc-service "bot.$1" start; echo "Started. Log: botctl logs $1"; }
 
+# The bot repository can list renamed subfolders in .botctl-renames ("<old> <new>" per line).
+# A bot installed from an old subfolder is moved over: .env and data are carried along.
+migrate_renamed_dir() {
+  local name="$1" root="$BOTS_DIR/$1" dir="$2" rel old new
+  [[ -f "$dir/package.json" || ! -f "$root/.botctl-renames" ]] && return 0
+  rel="${dir#"$root"/}"
+  while read -r old new; do
+    [[ -n "$old" && "$old" == "$rel" && -f "$root/$new/package.json" ]] || continue
+    echo "Moving $name from '$old' to '$new' …"
+    rc-service "bot.$name" stop >/dev/null 2>&1 || true
+    local item
+    for item in .env data; do
+      [[ -e "$dir/$item" && ! -e "$root/$new/$item" ]] && mv "$dir/$item" "$root/$new/$item"
+    done
+    sed -i "s|^directory=.*|directory=\"$root/$new\"|" "/etc/init.d/bot.$name"
+    rm -rf "$dir"
+    return 0
+  done <"$root/.botctl-renames"
+  return 0
+}
+
 cmd_update() {
   need_root; exists "$1"
   local root="$BOTS_DIR/$1" dir; dir=$(app_dir "$1")
+  local was_active=0; is_active "$1" && was_active=1
   local branch; branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
   local before; before=$(as_bot git -C "$root" rev-parse --short HEAD)
   as_bot git -C "$root" fetch --quiet --depth 1 origin "$branch"
   as_bot git -C "$root" reset --quiet --hard FETCH_HEAD
   local after; after=$(as_bot git -C "$root" rev-parse --short HEAD)
   echo "$1: $before → $after"
+  migrate_renamed_dir "$1" "$dir"
+  dir=$(app_dir "$1")
   install_deps "$dir"
   register_commands "$1"
-  if is_active "$1"; then
+  if [[ $was_active -eq 1 ]]; then
     rc-service "bot.$1" restart
     echo "Restarted."
   else
@@ -256,39 +280,11 @@ BOTCTL
   chmod 0755 /usr/local/bin/botctl
   msg_ok "Installed botctl"
 
-  # Optional inputs, exported by ct/bot-machine.sh: var_bot_name, var_bot_repo, var_bot_path,
-  # var_bot_repo_token, var_web_password, var_discord_token, var_discord_client_id, var_discord_guild_id
-  BOT_NAME="${var_bot_name:-jarvis}"
-  BOT_REPO="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
-  BOT_PATH="${var_bot_path-bot}"
-  if [[ -n "${var_bot_repo_token:-}" ]]; then
-    BOT_REPO="${BOT_REPO/https:\/\//https:\/\/x-access-token:${var_bot_repo_token}@}"
-  fi
-
-  msg_info "Installing Bot ${BOT_NAME}"
-  if botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
-    msg_ok "Installed Bot ${BOT_NAME}"
-
-    if [[ -n "${var_discord_token:-}" && -n "${var_discord_client_id:-}" ]]; then
-      msg_info "Configuring and Starting ${BOT_NAME}"
-      printf '%s\n' "$var_discord_token" | botctl set "$BOT_NAME" DISCORD_TOKEN
-      printf '%s\n' "$var_discord_client_id" | botctl set "$BOT_NAME" CLIENT_ID
-      [[ -n "${var_discord_guild_id:-}" ]] && printf '%s\n' "$var_discord_guild_id" | botctl set "$BOT_NAME" GUILD_ID
-      if $STD botctl start "$BOT_NAME"; then
-        msg_ok "Configured and Started ${BOT_NAME}"
-      else
-        msg_warn "Could not start ${BOT_NAME}; check the values with: botctl env ${BOT_NAME}"
-      fi
-    else
-      msg_warn "No Discord credentials given. Finish with: botctl env ${BOT_NAME} && botctl start ${BOT_NAME}"
-    fi
-  else
-    msg_warn "Could not install bot ${BOT_NAME} from ${BOT_REPO//\/\/*@/\/\/***@}. Add it later with: botctl add <name> <git-url> --path <subfolder>"
-  fi
-
-  # Web interface for botctl (webui/ in this repository). Optional input: var_web_password.
+  # Web interface for botctl (bot-machine/webui/ in this repository). Optional input: var_web_password.
   msg_info "Installing Web Interface"
-  WEBUI_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main}/webui"
+  WEBUI_URL="${COMMUNITY_SCRIPTS_URL:-https://raw.githubusercontent.com/kenetrix/discord-bots/main/bot-machine}"
+  [[ "$WEBUI_URL" == */bot-machine ]] || WEBUI_URL="${WEBUI_URL%/}/bot-machine"
+  WEBUI_URL="$WEBUI_URL/webui"
   install -d -m 0750 /opt/botctl-web /etc/botctl-web
   if wget -qO /opt/botctl-web/server.js "$WEBUI_URL/server.js" && wget -qO /opt/botctl-web/index.html "$WEBUI_URL/index.html"; then
     WEB_PASSWORD="${var_web_password:-$(head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20)}"

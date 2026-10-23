@@ -34,6 +34,7 @@ async function runAllVoice(client, job) {
       const result = await cleanChannel(channel, {
         maxAgeMs: job.max_age_hours * 36e5,
         keepPinned: Boolean(job.keep_pinned),
+        keepLatest: job.keep_latest,
       });
       total.deleted += result.deleted;
       total.skippedOld += result.skippedOld;
@@ -70,6 +71,7 @@ async function runJob(client, job) {
     const result = await cleanChannel(channel, {
       maxAgeMs: job.max_age_hours * 36e5,
       keepPinned: Boolean(job.keep_pinned),
+      keepLatest: job.keep_latest,
     });
     stmts.touchJob.run(Date.now(), job.id);
     console.log(`Cleaner #${job.id}: deleted ${result.deleted} message(s) in #${channel.name}.`);

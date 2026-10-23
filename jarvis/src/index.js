@@ -16,6 +16,12 @@ client.once(Events.ClientReady, (c) => {
   startScheduler(c);
 });
 
+client.on(Events.GuildCreate, async (guild) => {
+  // Servers that become available again after an outage also arrive here; only welcome fresh joins.
+  if (Date.now() - guild.joinedTimestamp > 60e3) return;
+  await byName.get('config').welcome(guild).catch((err) => console.warn(`Welcome message failed in ${guild.id}:`, err.message));
+});
+
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
     if (interaction.isChatInputCommand()) {
@@ -24,6 +30,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
     } else if (interaction.isButton()) {
       for (const command of commands) {
         if (command.handleButton && (await command.handleButton(interaction))) break;
+      }
+    } else if (interaction.isChannelSelectMenu()) {
+      for (const command of commands) {
+        if (command.handleSelect && (await command.handleSelect(interaction))) break;
       }
     }
   } catch (err) {
