@@ -49,6 +49,13 @@ function defaultTags(region) {
   return [...new Set([...(DEFAULT_TAGS[region] ?? []), region, `${region}1`])].slice(0, 3);
 }
 
+/** Link to the player's OP.GG page, e.g. https://op.gg/lol/summoners/euw/Name-TAG. */
+function opggUrl(riotId, region) {
+  const split = riotId.lastIndexOf('#');
+  const slug = `${riotId.slice(0, split)}-${riotId.slice(split + 1)}`;
+  return `https://op.gg/lol/summoners/${region.toLowerCase()}/${encodeURIComponent(slug)}`;
+}
+
 const num = (value) => (Number.isFinite(Number(value)) ? Number(value) : 0);
 const ROMAN = ['', 'I', 'II', 'III', 'IV'];
 const APEX_TIERS = new Set(['MASTER', 'GRANDMASTER', 'CHALLENGER']);
@@ -211,4 +218,4 @@ async function getChampionTags(names) {
   return new Map(names.filter((name) => tagCache.has(name)).map((name) => [name, tagCache.get(name)]));
 }
 
-module.exports = { REGIONS, parseRiotId, defaultTags, championKey, normalizeRank, normalizeRoles, normalizeChampions, getPlayer, getCounters, getRolePools, getChampionTags };
+module.exports = { REGIONS, parseRiotId, defaultTags, opggUrl, championKey, normalizeRank, normalizeRoles, normalizeChampions, getPlayer, getCounters, getRolePools, getChampionTags };

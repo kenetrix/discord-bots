@@ -106,3 +106,9 @@ test('a name without tag is tried with the default tags of the region', async (t
   assert.equal(player.guessedTag, true);
   await assert.rejects(getPlayer('Nobody', 'NA'), (err) => err.kind === 'not_found' && err.triedTags.join() === 'NA1,NA');
 });
+
+test('player links point to the OP.GG profile page', () => {
+  const { opggUrl } = require('../src/scout/opgg');
+  assert.equal(opggUrl('Enemy One#EUW', 'EUW'), 'https://op.gg/lol/summoners/euw/Enemy%20One-EUW');
+  assert.equal(opggUrl('Rëd#1#2', 'NA'), 'https://op.gg/lol/summoners/na/R%C3%ABd%231-2');
+});
