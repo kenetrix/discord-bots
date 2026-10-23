@@ -6,33 +6,33 @@ const { modlog } = require('../modlog');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('warn')
-    .setDescription('Verwarnungen verwalten')
+    .setDescription('Manage warnings')
     .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
     .setDMPermission(false)
     .addSubcommand((sub) =>
       sub
         .setName('add')
-        .setDescription('Mitglied verwarnen')
-        .addUserOption((o) => o.setName('mitglied').setDescription('Mitglied').setRequired(true))
-        .addStringOption((o) => o.setName('grund').setDescription('Grund').setRequired(true).setMaxLength(400)),
+        .setDescription('Warn a member')
+        .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true))
+        .addStringOption((o) => o.setName('reason').setDescription('Reason').setRequired(true).setMaxLength(400)),
     )
     .addSubcommand((sub) =>
       sub
         .setName('list')
-        .setDescription('Verwarnungen eines Mitglieds anzeigen')
-        .addUserOption((o) => o.setName('mitglied').setDescription('Mitglied').setRequired(true)),
+        .setDescription('Show a member\'s warnings')
+        .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true)),
     )
     .addSubcommand((sub) =>
       sub
         .setName('remove')
-        .setDescription('Eine Verwarnung löschen')
-        .addIntegerOption((o) => o.setName('id').setDescription('ID der Verwarnung').setRequired(true)),
+        .setDescription('Delete a warning')
+        .addIntegerOption((o) => o.setName('id').setDescription('Warning ID').setRequired(true)),
     )
     .addSubcommand((sub) =>
       sub
         .setName('clear')
-        .setDescription('Alle Verwarnungen eines Mitglieds löschen')
-        .addUserOption((o) => o.setName('mitglied').setDescription('Mitglied').setRequired(true)),
+        .setDescription('Delete all warnings of a member')
+        .addUserOption((o) => o.setName('member').setDescription('Member').setRequired(true)),
     ),
 
   async execute(interaction) {
@@ -40,33 +40,33 @@ module.exports = {
     const guildId = interaction.guild.id;
 
     if (sub === 'add') {
-      const user = interaction.options.getUser('mitglied');
-      const reason = interaction.options.getString('grund');
-      if (user.bot) return ephemeral(interaction, 'Bots können nicht verwarnt werden.');
+      const user = interaction.options.getUser('member');
+      const reason = interaction.options.getString('reason');
+      if (user.bot) return ephemeral(interaction, 'Bots cannot be warned.');
       stmts.addWarning.run(guildId, user.id, interaction.user.id, reason, Date.now());
       const { n } = stmts.countWarnings.get(guildId, user.id);
-      await user.send(`Du wurdest auf **${interaction.guild.name}** verwarnt. Grund: ${reason}`).catch(() => {});
+      await user.send(`You were warned on **${interaction.guild.name}**. Reason: ${reason}`).catch(() => {});
       await modlog(interaction.guild, {
-        action: 'Verwarnung',
+        action: 'Warning',
         target: user,
         moderator: interaction.user,
         reason,
         color: 0xf0b232,
-        fields: [{ name: 'Verwarnungen gesamt', value: String(n), inline: true }],
+        fields: [{ name: 'Total warnings', value: String(n), inline: true }],
       });
-      return ephemeral(interaction, `${user} wurde verwarnt (insgesamt ${n}).`);
+      return ephemeral(interaction, `${user} was warned (${n} in total).`);
     }
 
     if (sub === 'list') {
-      const user = interaction.options.getUser('mitglied');
+      const user = interaction.options.getUser('member');
       const rows = stmts.listWarnings.all(guildId, user.id);
-      if (rows.length === 0) return ephemeral(interaction, `${user} hat keine Verwarnungen.`);
+      if (rows.length === 0) return ephemeral(interaction, `${user} has no warnings.`);
       const embed = new EmbedBuilder()
-        .setTitle(`Verwarnungen von ${user.tag}`)
+        .setTitle(`Warnings for ${user.tag}`)
         .setColor(0xf0b232)
         .setDescription(
           rows
-            .map((w) => `**#${w.id}** · <t:${Math.floor(w.created_at / 1000)}:d> · von <@${w.moderator_id}>\n${w.reason}`)
+            .map((w) => `**#${w.id}** · <t:${Math.floor(w.created_at / 1000)}:d> · by <@${w.moderator_id}>\n${w.reason}`)
             .join('\n\n'),
         );
       return ephemeral(interaction, { embeds: [embed] });
@@ -75,18 +75,18 @@ module.exports = {
     if (sub === 'remove') {
       const id = interaction.options.getInteger('id');
       const { changes } = stmts.deleteWarning.run(guildId, id);
-      return ephemeral(interaction, changes ? `Verwarnung #${id} gelöscht.` : `Verwarnung #${id} gibt es nicht.`);
+      return ephemeral(interaction, changes ? `Deleted warning #${id}.` : `Warning #${id} does not exist.`);
     }
 
-    const user = interaction.options.getUser('mitglied');
+    const user = interaction.options.getUser('member');
     const { changes } = stmts.clearWarnings.run(guildId, user.id);
     await modlog(interaction.guild, {
-      action: 'Verwarnungen gelöscht',
+      action: 'Warnings deleted',
       target: user,
       moderator: interaction.user,
       color: 0x23a55a,
-      fields: [{ name: 'Anzahl', value: String(changes), inline: true }],
+      fields: [{ name: 'Count', value: String(changes), inline: true }],
     });
-    return ephemeral(interaction, `${changes} Verwarnung(en) von ${user} gelöscht.`);
+    return ephemeral(interaction, `Deleted ${changes} warning(s) for ${user}.`);
   },
 };

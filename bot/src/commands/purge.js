@@ -5,24 +5,24 @@ const { modlog } = require('../modlog');
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('purge')
-    .setDescription('Die letzten Nachrichten im aktuellen Kanal löschen')
+    .setDescription('Delete the latest messages in the current channel')
     .setDefaultMemberPermissions(PermissionFlagsBits.ManageMessages)
     .setDMPermission(false)
     .addIntegerOption((o) =>
-      o.setName('anzahl').setDescription('Wie viele Nachrichten (1 bis 500)').setRequired(true).setMinValue(1).setMaxValue(500),
+      o.setName('amount').setDescription('How many messages (1 to 500)').setRequired(true).setMinValue(1).setMaxValue(500),
     )
-    .addUserOption((o) => o.setName('nutzer').setDescription('Nur Nachrichten dieses Nutzers'))
-    .addBooleanOption((o) => o.setName('angepinnte_behalten').setDescription('Angepinnte behalten (Standard: ja)')),
+    .addUserOption((o) => o.setName('user').setDescription('Only messages from this user'))
+    .addBooleanOption((o) => o.setName('keep_pinned').setDescription('Keep pinned messages (default: yes)')),
 
   async execute(interaction) {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const amount = interaction.options.getInteger('anzahl');
-    const user = interaction.options.getUser('nutzer');
+    const amount = interaction.options.getInteger('amount');
+    const user = interaction.options.getUser('user');
 
     const { deleted, skippedOld } = await cleanChannel(interaction.channel, {
       limit: amount,
       userId: user?.id,
-      keepPinned: interaction.options.getBoolean('angepinnte_behalten') ?? true,
+      keepPinned: interaction.options.getBoolean('keep_pinned') ?? true,
       maxScan: user ? 2000 : amount + 100,
       allowOld: false,
     });
@@ -31,13 +31,13 @@ module.exports = {
       action: 'Purge',
       moderator: interaction.user,
       fields: [
-        { name: 'Kanal', value: `${interaction.channel}`, inline: true },
-        { name: 'Gelöscht', value: String(deleted), inline: true },
-        ...(user ? [{ name: 'Nur von', value: `${user}`, inline: true }] : []),
+        { name: 'Channel', value: `${interaction.channel}`, inline: true },
+        { name: 'Deleted', value: String(deleted), inline: true },
+        ...(user ? [{ name: 'Only from', value: `${user}`, inline: true }] : []),
       ],
     });
 
-    const note = skippedOld ? ` ${skippedOld} Nachricht(en) älter als 14 Tage übersprungen, dafür ist /cleaner gedacht.` : '';
-    return interaction.editReply(`${deleted} Nachricht(en) gelöscht.${note}`);
+    const note = skippedOld ? ` Skipped ${skippedOld} message(s) older than 14 days; use /cleaner for those.` : '';
+    return interaction.editReply(`Deleted ${deleted} message(s).${note}`);
   },
 };

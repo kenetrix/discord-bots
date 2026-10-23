@@ -9,7 +9,7 @@ const rest = new REST().setToken(token);
 (async () => {
   const route = guildId ? Routes.applicationGuildCommands(clientId, guildId) : Routes.applicationCommands(clientId);
   const result = await rest.put(route, { body });
-  console.log(`${result.length} Slash-Command(s) ${guildId ? `auf Server ${guildId}` : 'global'} registriert.`);
+  console.log(`Registered ${result.length} slash command(s) ${guildId ? `on server ${guildId}` : 'globally'}.`);
 })().catch((err) => {
   console.error(err);
   process.exit(1);

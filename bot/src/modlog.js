@@ -18,14 +18,14 @@ async function modlog(guild, { action, target, moderator, reason, color = 0x5865
       .setColor(color)
       .setTimestamp()
       .addFields(
-        ...(target ? [{ name: 'Mitglied', value: `${target} (${target.id})`, inline: true }] : []),
+        ...(target ? [{ name: 'Member', value: `${target} (${target.id})`, inline: true }] : []),
         { name: 'Moderator', value: `${moderator}`, inline: true },
-        ...(reason ? [{ name: 'Grund', value: reason }] : []),
+        ...(reason ? [{ name: 'Reason', value: reason }] : []),
         ...fields,
       );
     await channel.send({ embeds: [embed] });
   } catch (err) {
-    console.warn(`Mod-Log fehlgeschlagen in ${guild.id}:`, err.message);
+    console.warn(`Mod log failed in ${guild.id}:`, err.message);
   }
 }
 

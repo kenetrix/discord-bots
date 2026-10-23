@@ -14,20 +14,20 @@ const PREFIX = 'rolepanel:';
 
 const data = new SlashCommandBuilder()
   .setName('rolepanel')
-  .setDescription('Panel mit Buttons posten, über die sich Mitglieder Rollen selbst geben')
+  .setDescription('Post a panel with buttons that let members assign roles to themselves')
   .setDefaultMemberPermissions(PermissionFlagsBits.ManageRoles)
   .setDMPermission(false)
-  .addStringOption((o) => o.setName('titel').setDescription('Überschrift des Panels').setRequired(true))
-  .addRoleOption((o) => o.setName('rolle1').setDescription('Rolle 1').setRequired(true));
+  .addStringOption((o) => o.setName('title').setDescription('Panel heading').setRequired(true))
+  .addRoleOption((o) => o.setName('role1').setDescription('Role 1').setRequired(true));
 for (let i = 2; i <= MAX_ROLES; i++) {
-  data.addRoleOption((o) => o.setName(`rolle${i}`).setDescription(`Rolle ${i}`));
+  data.addRoleOption((o) => o.setName(`role${i}`).setDescription(`Role ${i}`));
 }
 data
-  .addStringOption((o) => o.setName('text').setDescription('Beschreibung unter dem Titel'))
+  .addStringOption((o) => o.setName('text').setDescription('Description below the title'))
   .addChannelOption((o) =>
     o
-      .setName('kanal')
-      .setDescription('Kanal für das Panel (Standard: aktueller Kanal)')
+      .setName('channel')
+      .setDescription('Channel for the panel (default: current channel)')
       .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement),
   );
 
@@ -37,7 +37,7 @@ module.exports = {
   async execute(interaction) {
     const roles = [];
     for (let i = 1; i <= MAX_ROLES; i++) {
-      const role = interaction.options.getRole(`rolle${i}`);
+      const role = interaction.options.getRole(`role${i}`);
       if (role && !roles.some((r) => r.id === role.id)) roles.push(role);
     }
     for (const role of roles) {
@@ -45,11 +45,11 @@ module.exports = {
       if (problem) return ephemeral(interaction, problem);
     }
 
-    const channel = interaction.options.getChannel('kanal') ?? interaction.channel;
+    const channel = interaction.options.getChannel('channel') ?? interaction.channel;
     const embed = new EmbedBuilder()
-      .setTitle(interaction.options.getString('titel'))
+      .setTitle(interaction.options.getString('title'))
       .setDescription(
-        interaction.options.getString('text') ?? 'Klicke auf einen Button, um die Rolle zu erhalten oder wieder abzugeben.',
+        interaction.options.getString('text') ?? 'Click a button to get the role or give it back.',
       )
       .setColor(0x5865f2);
 
@@ -67,7 +67,7 @@ module.exports = {
     }
 
     await channel.send({ embeds: [embed], components: rows });
-    return ephemeral(interaction, `Panel in ${channel} gepostet.`);
+    return ephemeral(interaction, `Panel posted in ${channel}.`);
   },
 
   /** Button click: toggle the role. The role id is encoded in the customId, so no DB is needed. */
@@ -75,22 +75,22 @@ module.exports = {
     if (!interaction.customId.startsWith(PREFIX)) return false;
     const role = interaction.guild.roles.cache.get(interaction.customId.slice(PREFIX.length));
     if (!role) {
-      await ephemeral(interaction, 'Diese Rolle gibt es nicht mehr.');
+      await ephemeral(interaction, 'This role no longer exists.');
       return true;
     }
     // Only the bot's hierarchy matters here; the member needs no permissions.
     if (role.position >= interaction.guild.members.me.roles.highest.position || role.managed) {
-      await ephemeral(interaction, `Ich kann ${role} nicht vergeben. Bitte wende dich an die Moderation.`);
+      await ephemeral(interaction, `I cannot assign ${role}. Please contact the moderators.`);
       return true;
     }
 
     const member = interaction.member;
     if (member.roles.cache.has(role.id)) {
-      await member.roles.remove(role, 'Rollen-Panel');
-      await ephemeral(interaction, `${role} entfernt.`);
+      await member.roles.remove(role, 'Role panel');
+      await ephemeral(interaction, `Removed ${role}.`);
     } else {
-      await member.roles.add(role, 'Rollen-Panel');
-      await ephemeral(interaction, `${role} erhalten.`);
+      await member.roles.add(role, 'Role panel');
+      await ephemeral(interaction, `Got ${role}.`);
     }
     return true;
   },
