@@ -45,16 +45,17 @@ die() { echo "Error: $*" >&2; exit 1; }
 as_bot() { su-exec "$BOT_USER" env HOME="/home/$BOT_USER" "$@"; }
 need_root() { [[ $EUID -eq 0 ]] || die "Please run as root."; }
 check_name() { [[ "${1:-}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "Invalid bot name '${1:-}' (only a-z, 0-9, -)."; }
-exists() { [[ -d "$BOTS_DIR/$1" ]] || die "Bot '$1' does not exist. 'botctl list' shows all bots."; }
+exists() { [[ -d "$BOTS_DIR/$1" && -f "/etc/init.d/bot.$1" ]] || die "Bot '$1' does not exist. 'botctl list' shows all bots."; }
 app_dir() { sed -n 's/^directory="\(.*\)"$/\1/p' "/etc/init.d/bot.$1"; }
 is_active() { rc-service "bot.$1" status >/dev/null 2>&1; }
 
 install_deps() {
   local dir="$1"
+  # npm would run "node-gyp rebuild" for better-sqlite3 (needs a compiler); its prebuilt binary is used instead.
   if [[ -f "$dir/package-lock.json" ]]; then
-    (cd "$dir" && as_bot npm ci --omit=dev --no-audit --no-fund)
+    (cd "$dir" && as_bot npm ci --omit=dev --ignore-scripts --no-audit --no-fund)
   else
-    (cd "$dir" && as_bot npm install --omit=dev --no-audit --no-fund)
+    (cd "$dir" && as_bot npm install --omit=dev --ignore-scripts --no-audit --no-fund)
   fi
 }
 
@@ -97,6 +98,9 @@ cmd_add() {
   [[ -e "$BOTS_DIR/$name" ]] && die "Bot '$name' already exists."
 
   local root="$BOTS_DIR/$name"
+  # A failed add must not leave a half-installed bot behind.
+  ADD_OK=0 ADD_NAME="$name"
+  trap 'if [[ $ADD_OK -ne 1 ]]; then rm -rf "$BOTS_DIR/$ADD_NAME" "/etc/init.d/bot.$ADD_NAME"; fi' EXIT
   echo "Cloning ${url//\/\/*@/\/\/***@} …"
   as_bot git clone --quiet --depth 1 ${branch:+--branch "$branch"} "$url" "$root"
   local dir="$root${sub:+/${sub#/}}"
@@ -131,6 +135,7 @@ depend() {
 EOF
   chmod 0755 "/etc/init.d/bot.$name"
   rc-update add "bot.$name" default >/dev/null
+  ADD_OK=1
 
   echo
   echo "Bot '$name' installed in $dir"
@@ -256,7 +261,7 @@ BOTCTL
   fi
 
   msg_info "Installing Bot ${BOT_NAME}"
-  if $STD botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
+  if botctl add "$BOT_NAME" "$BOT_REPO" ${BOT_PATH:+--path "$BOT_PATH"}; then
     msg_ok "Installed Bot ${BOT_NAME}"
 
     if [[ -n "${var_discord_token:-}" && -n "${var_discord_client_id:-}" ]]; then
