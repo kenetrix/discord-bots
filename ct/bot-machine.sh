@@ -22,6 +22,7 @@ export var_bot_name="${var_bot_name:-jarvis}"
 export var_bot_repo="${var_bot_repo:-https://github.com/kenetrix/discord-bots.git}"
 export var_bot_path="${var_bot_path-bot}"
 export var_bot_repo_token="${var_bot_repo_token:-}"
+export var_web_password="${var_web_password:-}"
 export var_discord_token="${var_discord_token:-}"
 export var_discord_client_id="${var_discord_client_id:-}"
 export var_discord_guild_id="${var_discord_guild_id:-}"
@@ -50,6 +51,42 @@ update_alpine() {
   fi
   rm -f "$tmp"
 
+  msg_info "Updating Web Interface"
+  local webui_url="${COMMUNITY_SCRIPTS_URL}/webui"
+  install -d -m 0750 /opt/botctl-web /etc/botctl-web
+  if wget -qO /opt/botctl-web/server.js "$webui_url/server.js" && wget -qO /opt/botctl-web/index.html "$webui_url/index.html"; then
+    if [[ ! -f /etc/botctl-web/password ]]; then
+      head -c 48 /dev/urandom | base64 | tr -dc 'A-Za-z0-9' | head -c 20 >/etc/botctl-web/password
+      chmod 0600 /etc/botctl-web/password
+      NEW_WEBUI=1
+    fi
+    if [[ ! -f /etc/init.d/botctl-web ]]; then
+      cat <<'WEBSERVICE' >/etc/init.d/botctl-web
+#!/sbin/openrc-run
+description="botctl web interface"
+command="/usr/bin/node"
+command_args="/opt/botctl-web/server.js"
+command_background="yes"
+pidfile="/run/botctl-web.pid"
+output_log="/var/log/botctl-web.log"
+error_log="/var/log/botctl-web.log"
+
+depend() {
+  need net
+}
+WEBSERVICE
+      chmod 0755 /etc/init.d/botctl-web
+      rc-update add botctl-web default >/dev/null
+    fi
+    rc-service botctl-web restart >/dev/null 2>&1 || rc-service botctl-web start >/dev/null 2>&1 || true
+    msg_ok "Updated Web Interface"
+    if [[ -n "${NEW_WEBUI:-}" ]]; then
+      echo -e "${INFO}Web interface: http://$(hostname -i | awk '{print $1}'):8080, password: $(cat /etc/botctl-web/password)"
+    fi
+  else
+    msg_warn "Could not update the web interface"
+  fi
+
   msg_info "Updating Bots"
   $STD botctl update-all
   msg_ok "Updated Bots"
@@ -75,6 +112,10 @@ description
 
 msg_ok "Completed successfully!\n"
 echo -e "${CREATING}${GN}${APP} setup has been successfully initialized!${CL}"
+echo -e "${INFO}${YW}Web interface:${CL} ${BGN}http://${IP:-<container-ip>}:8080${CL}"
+if [[ -z "$var_web_password" ]]; then
+  echo -e "${TAB}${YW}Password:${CL} ${BGN}$(pct exec "$CTID" -- cat /etc/botctl-web/password 2>/dev/null)${CL}"
+fi
 echo -e "${INFO}${YW}Manage the bots inside the container (pct enter ${CTID}) with:${CL}"
 echo -e "${TAB}${BGN}botctl list${CL}"
 if [[ -z "$var_discord_token" || -z "$var_discord_client_id" ]]; then
