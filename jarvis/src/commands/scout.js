@@ -4,11 +4,12 @@ const { REGIONS, parseRiotId, getPlayer, getCounters, getRolePools, getChampionT
 const { recommendBans, priorityBans, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../scout/analysis');
 const { buildReport, overview, render, parseButton, namesakeCount } = require('../scout/report');
 const { TtlCache } = require('../scout/cache');
-const { MAX_PLAYERS, parsePlayers } = require('../scout/input');
 const { logger, who } = require('../log');
 
 const log = logger('scout');
 
+// Distinct names without numbers, because the order of the enemies does not matter (Discord needs unique names).
+const PLAYER_OPTIONS = ['player', 'summoner', 'enemy', 'opponent', 'rival'];
 const DEFAULT_REGION = (process.env.SCOUT_REGION || 'EUW').toUpperCase();
 const COOLDOWN_MS = 60e3; // per user, so one person cannot flood OP.GG
 const lastScout = new Map(); // user id -> time of their last scout
@@ -102,12 +103,10 @@ module.exports = {
       .setName('scout')
       .setDescription('Scout a Clash enemy team and post ban and pick advice in your voice channel')
       .setDMPermission(false);
-    builder.addStringOption((o) =>
-      o
-        .setName('enemies')
-        .setDescription('Up to five Riot IDs in any order, e.g. A#EUW, B#EUW (tag optional) or pasted lobby chat')
-        .setRequired(true)
-        .setMaxLength(1000),
+    PLAYER_OPTIONS.forEach((name, i) =>
+      builder.addStringOption((o) =>
+        o.setName(name).setDescription('Riot ID of an enemy, any order, e.g. Name#EUW (tag optional)').setRequired(i === 0).setMaxLength(30),
+      ),
     );
     builder.addStringOption((o) =>
       o
@@ -119,16 +118,16 @@ module.exports = {
   })(),
 
   async execute(interaction) {
-    const ids = parsePlayers(interaction.options.getString('enemies'));
-    if (!ids.length || ids.length > MAX_PLAYERS) {
-      const content = ids.length
-        ? `That is ${ids.length} players; a team has at most ${MAX_PLAYERS}: ${ids.join(', ')}`
-        : 'Give at least one Riot ID, e.g. Name#EUW.';
-      return interaction.reply({ content, flags: MessageFlags.Ephemeral });
+    // Same player twice counts once, and sorting makes the result independent of which field got which name.
+    const unique = new Map();
+    for (const id of PLAYER_OPTIONS.map((name) => interaction.options.getString(name)?.trim()).filter(Boolean)) {
+      const key = id.toLowerCase().replace(/\s*#\s*/u, '#');
+      if (!unique.has(key)) unique.set(key, id);
     }
+    const ids = [...unique.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const invalid = ids.filter((id) => !parseRiotId(id));
     if (invalid.length) {
-      return interaction.reply({ content: `Not a Riot ID like Name#TAG or a name of 3 to 16 characters: ${invalid.join(', ')}. Separate players with commas; a name with spaces needs a comma or its tag.`, flags: MessageFlags.Ephemeral });
+      return interaction.reply({ content: `Not a Riot ID like Name#TAG or a name of 3 to 16 characters: ${invalid.join(', ')}`, flags: MessageFlags.Ephemeral });
     }
     const region = interaction.options.getString('region') ?? DEFAULT_REGION;
 
