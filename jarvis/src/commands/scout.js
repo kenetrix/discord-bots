@@ -4,6 +4,9 @@ const { REGIONS, parseRiotId, getPlayer, getCounters, getRolePools, getChampionT
 const { recommendBans, priorityBans, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../scout/analysis');
 const { buildReport, overview, render, parseButton, namesakeCount } = require('../scout/report');
 const { TtlCache } = require('../scout/cache');
+const { logger, who } = require('../log');
+
+const log = logger('scout');
 
 const PLAYER_OPTIONS = ['player1', 'player2', 'player3', 'player4', 'player5'];
 const DEFAULT_REGION = (process.env.SCOUT_REGION || 'EUW').toUpperCase();
@@ -17,8 +20,15 @@ function failureReason(err, region) {
   if (err.kind === 'not_found') return `not found on OP.GG (${region}). Check the name, the tag and the region.`;
   if (err.kind === 'rate_limited') return 'OP.GG is limiting requests right now.';
   if (err.kind === 'unavailable') return 'OP.GG did not answer.';
-  console.warn('Scout lookup failed:', err.message);
   return 'OP.GG could not look this player up.';
+}
+
+/** One player's outcome for the log: "Name#TAG (cached, by name search)" or "Name: not_found". */
+function outcome(result, id) {
+  if (result.status === 'rejected') return `${id}: ${result.reason.kind ?? 'error'}${result.reason.kind ? '' : ` (${result.reason.message})`}`;
+  const p = result.value;
+  const how = [p.cached && 'cached', p.foundBy === 'search' ? 'by name search' : p.guessedTag && 'guessed tag'].filter(Boolean);
+  return `${p.riotId}${how.length ? ` (${how.join(', ')})` : ''}`;
 }
 
 /** Players found by OP.GG's name search, so the caller can check which account was picked. */
@@ -42,12 +52,20 @@ const reports = new TtlCache(3 * 60 * 60e3, 100);
 /** Looks the players up and posts the report. */
 async function scout(interaction, ids, region) {
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const started = Date.now();
 
   const [results, rolePools] = await Promise.all([Promise.allSettled(ids.map((id) => getPlayer(id, region))), getRolePools()]);
   const players = results.filter((r) => r.status === 'fulfilled').map((r) => r.value);
   const errors = results.filter((r) => r.status === 'rejected').map((r) => r.reason);
   const failed = results.flatMap((r, i) => (r.status === 'rejected' ? [`${ids[i]}: ${failureReason(r.reason, region)}`] : []));
-  if (!players.length) return interaction.editReply(nobodyFound(errors, failed));
+  const found = `${players.length}/${ids.length} player(s) found in ${region} after ${Date.now() - started} ms: ${results.map((r, i) => outcome(r, ids[i])).join(', ')}`;
+  for (const err of errors.filter((e) => !e.kind)) log.error('Player lookup failed', err);
+  if (!players.length) {
+    log.warn(`No report for ${who(interaction.user)}: ${found}`);
+    return interaction.editReply(nobodyFound(errors, failed));
+  }
+  log.info(found);
+  if (!rolePools) log.warn('OP.GG lane meta not available; role guesses use the players\' history only.');
 
   const { bans, alternatives } = recommendBans(players);
   const banned = new Set(bans.map((b) => b.champion));
@@ -70,6 +88,8 @@ async function scout(interaction, ids, region) {
     .has([PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks]);
   const target = canPost ? voice : interaction.channel;
   await target.send({ content: `Scouting report requested by ${interaction.user}`, ...overview(report), allowedMentions: { parse: [] } });
+
+  log.info(`Report ${id} posted in ${who(target)}${voice && !canPost ? ` (no permission to post in ${who(voice)})` : ''} after ${Date.now() - started} ms.`);
 
   const where = voice && !canPost ? ` I may not write in ${voice}, so I posted it here.` : '';
   const missing = failed.length ? `\n⚠️ Not scouted:\n${failed.map((f) => `• ${f}`).join('\n')}` : '';
@@ -104,9 +124,11 @@ module.exports = {
 
     const wait = (lastScout.get(interaction.user.id) ?? 0) + COOLDOWN_MS - Date.now();
     if (wait > 0) {
+      log.info(`${who(interaction.user)} is on cooldown for ${Math.ceil(wait / 1e3)} s.`);
       return interaction.reply({ content: `You can scout again in ${Math.ceil(wait / 1e3)} s.`, flags: MessageFlags.Ephemeral });
     }
     if (running.has(interaction.guildId)) {
+      log.info(`Scout by ${who(interaction.user)} refused: another scout is running on this server.`);
       return interaction.reply({ content: 'A scout is already running on this server. Try again in a few seconds.', flags: MessageFlags.Ephemeral });
     }
     running.add(interaction.guildId);
@@ -125,6 +147,7 @@ module.exports = {
     const report = await reports.peek(button.id);
     const view = report && render(report, button.view);
     if (!view) {
+      log.debug(`Report ${button.id} expired (button by ${who(interaction.user)}).`);
       await interaction.reply({ content: 'This report has expired. Run /scout again.', flags: MessageFlags.Ephemeral });
       return true;
     }

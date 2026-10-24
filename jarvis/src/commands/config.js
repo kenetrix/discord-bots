@@ -2,19 +2,30 @@ const {
   SlashCommandBuilder,
   PermissionFlagsBits,
   ChannelType,
-  ChannelSelectMenuBuilder,
+  StringSelectMenuBuilder,
   ActionRowBuilder,
   ButtonBuilder,
   ButtonStyle,
   EmbedBuilder,
+  MessageFlags,
 } = require('discord.js');
 const { stmts } = require('../db');
-const { ephemeral } = require('../util');
+const { ephemeral, missingPermissions, POST_PERMISSIONS } = require('../util');
+const { logger, who } = require('../log');
+
+const log = logger('config');
 
 const MODLOG_SELECT = 'config:modlog';
 const MODLOG_OFF = 'config:modlog-off';
 const MODLOG_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
-const LOG_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
+const MAX_OPTIONS = 25; // Discord's limit for one select menu
+
+/** Text channels of the server in their sidebar order, split by whether Jarvis can post log embeds there. */
+function logChannels(guild) {
+  const channels = guild.channels.cache.filter((c) => MODLOG_TYPES.includes(c.type)).sort((a, b) => a.rawPosition - b.rawPosition);
+  const [usable, blocked] = channels.partition((c) => !missingPermissions(c));
+  return { usable: [...usable.values()], blocked: [...blocked.values()] };
+}
 
 /** Builds the dashboard message (embed plus controls) for a guild. */
 function dashboard(guild) {
@@ -25,24 +36,37 @@ function dashboard(guild) {
   let modlogText = 'Disabled';
   if (modlogId) {
     modlogText = modlogChannel ? `${modlogChannel}` : `<#${modlogId}> (channel no longer exists)`;
-    if (modlogChannel && !modlogChannel.permissionsFor(guild.members.me)?.has(LOG_PERMISSIONS)) {
-      modlogText += '\nI am missing View Channel, Send Messages or Embed Links there.';
-    }
+    const missing = modlogChannel && missingPermissions(modlogChannel);
+    if (missing) modlogText += `\n⚠️ I cannot post there: I am missing ${missing}. Allow it in the channel's permissions, or pick another channel.`;
   }
 
-  const embed = new EmbedBuilder()
-    .setTitle('Jarvis settings')
-    .setColor(0x5865f2)
-    .addFields(
-      { name: 'Mod log channel', value: modlogText },
-      { name: 'Cleaner jobs', value: jobs ? `${jobs} (manage them with /cleaner)` : 'None (create them with /cleaner)' },
-    );
+  // Discord's channel picker cannot hide channels, so the menu only offers the channels Jarvis can post in.
+  const { usable, blocked } = logChannels(guild);
+  const fields = [{ name: 'Mod log channel', value: modlogText }];
+  if (blocked.length) {
+    const names = blocked.slice(0, 15).map(String).join(', ');
+    fields.push({
+      name: `Channels I cannot post in (${blocked.length})`,
+      value: `${names}${blocked.length > 15 ? ', …' : ''}\nThey are not in the menu. To use one, give me View Channel, Send Messages and Embed Links there.`,
+    });
+  }
+  fields.push({ name: 'Cleaner jobs', value: jobs ? `${jobs} (manage them with /cleaner)` : 'None (create them with /cleaner)' });
 
-  const select = new ChannelSelectMenuBuilder()
+  const embed = new EmbedBuilder().setTitle('Jarvis settings').setColor(0x5865f2).addFields(...fields);
+
+  const offered = usable.slice(0, MAX_OPTIONS);
+  const select = new StringSelectMenuBuilder()
     .setCustomId(MODLOG_SELECT)
-    .setPlaceholder('Select the mod log channel')
-    .setChannelTypes(...MODLOG_TYPES);
-  if (modlogChannel) select.setDefaultChannels(modlogChannel.id);
+    .setPlaceholder(offered.length ? 'Select the mod log channel' : 'No channel where I can post')
+    .setDisabled(!offered.length)
+    .addOptions(
+      offered.length
+        ? offered.map((c) => ({ label: `#${c.name}`.slice(0, 100), value: c.id, default: c.id === modlogId }))
+        : [{ label: 'No channel available', value: 'none' }],
+    );
+  if (usable.length > MAX_OPTIONS) {
+    embed.setFooter({ text: `The menu shows the first ${MAX_OPTIONS} of ${usable.length} channels I can post in.` });
+  }
 
   const off = new ButtonBuilder()
     .setCustomId(MODLOG_OFF)
@@ -60,7 +84,7 @@ function allowed(interaction) {
 /** Channel for the welcome message: the system channel, else the first text channel the bot can post in. */
 function welcomeChannel(guild) {
   const me = guild.members.me;
-  const canPost = (c) => c?.permissionsFor(me)?.has([...LOG_PERMISSIONS]);
+  const canPost = (c) => c?.permissionsFor(me)?.has(POST_PERMISSIONS);
   if (canPost(guild.systemChannel)) return guild.systemChannel;
   return guild.channels.cache
     .filter((c) => c.type === ChannelType.GuildText && canPost(c))
@@ -72,7 +96,7 @@ function welcomeChannel(guild) {
 async function welcome(guild) {
   const channel = welcomeChannel(guild);
   if (!channel) {
-    console.warn(`No channel to post the settings dashboard in ${guild.id}; use /config.`);
+    log.warn(`No channel to post the settings dashboard in on ${who(guild)}; use /config there.`);
     return;
   }
   const { embeds, components } = dashboard(guild);
@@ -102,6 +126,7 @@ module.exports = {
       return true;
     }
     stmts.setModlog.run(interaction.guild.id, null);
+    log.info(`Mod log on ${who(interaction.guild)} disabled by ${who(interaction.user)}.`);
     await interaction.update(dashboard(interaction.guild));
     return true;
   },
@@ -112,12 +137,24 @@ module.exports = {
       await ephemeral(interaction, 'You need the Manage Server permission for this.');
       return true;
     }
-    const channel = interaction.channels.first();
-    if (!channel.permissionsFor(interaction.guild.members.me)?.has(LOG_PERMISSIONS)) {
-      await ephemeral(interaction, `I am missing View Channel, Send Messages or Embed Links in ${channel}.`);
+    const channel = interaction.guild.channels.cache.get(interaction.values[0]);
+    if (!channel) {
+      await interaction.update(dashboard(interaction.guild));
+      await interaction.followUp({ content: 'That channel no longer exists. Pick another one.', flags: MessageFlags.Ephemeral });
+      return true;
+    }
+    // Permissions may have changed since the dashboard was opened.
+    const missing = missingPermissions(channel);
+    if (missing) {
+      await interaction.update(dashboard(interaction.guild));
+      await interaction.followUp({
+        content: `I cannot use ${channel} as the mod log: I am missing ${missing} there. Allow it in the channel's permissions for my role, or pick another channel.`,
+        flags: MessageFlags.Ephemeral,
+      });
       return true;
     }
     stmts.setModlog.run(interaction.guild.id, channel.id);
+    log.info(`Mod log channel on ${who(interaction.guild)} set to ${who(channel)} by ${who(interaction.user)}.`);
     await interaction.update(dashboard(interaction.guild));
     return true;
   },

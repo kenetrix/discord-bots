@@ -3,6 +3,9 @@
 // as a React Server Components payload. That page is unofficial and undocumented: any failure or change in its
 // shape only means "no suggestions", and the caller falls back to guessing the tag.
 const { TtlCache } = require('./cache');
+const { logger } = require('../log');
+
+const log = logger('scout');
 
 const SEARCH_URL = process.env.OPGG_SEARCH_URL || 'https://op.gg/lol/summoners/search';
 const TIMEOUT_MS = 8e3;
@@ -79,7 +82,9 @@ async function fetchSearch(gameName, region) {
   if (!res.ok) throw new Error(`OP.GG search: HTTP ${res.status}`);
   const text = await res.text();
   if (text.length > MAX_LENGTH) throw new Error('OP.GG search: answer too large');
-  return rankAccounts(parseSearch(text), gameName);
+  const accounts = rankAccounts(parseSearch(text), gameName);
+  log.debug(`OP.GG name search for "${gameName}" in ${region}: ${accounts.length} account(s)`);
+  return accounts;
 }
 
 /** Accounts named `gameName` in `region`, best guess first, cached for 30 minutes. Throws when the search fails. */

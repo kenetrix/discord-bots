@@ -1,10 +1,11 @@
 const path = require('node:path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env'), quiet: true });
+const { logger } = require('./log');
 
 function required(name) {
   const value = process.env[name];
   if (!value) {
-    console.error(`Missing environment variable: ${name} (see .env.example)`);
+    logger('config').error(`Missing environment variable: ${name} (see .env.example)`);
     process.exit(1);
   }
   return value;

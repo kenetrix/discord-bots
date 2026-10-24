@@ -1,5 +1,8 @@
 // Minimal client for the public OP.GG MCP server (Streamable HTTP transport, no API key).
 const { parseNotation } = require('./notation');
+const { logger } = require('../log');
+
+const log = logger('opgg');
 
 const ENDPOINT = process.env.OPGG_MCP_URL || 'https://mcp-api.op.gg/mcp';
 const PROTOCOL_VERSION = '2025-03-26';
@@ -100,7 +103,29 @@ function parseText(text) {
 }
 
 /** Calls an OP.GG tool and returns its result as plain objects. */
-async function callTool(name, args, retry = true) {
+async function callTool(name, args) {
+  const started = Date.now();
+  const call = describeCall(name, args);
+  try {
+    const result = await callToolOnce(name, args, true);
+    log.debug(`${call}: ${Date.now() - started} ms`);
+    return result;
+  } catch (err) {
+    // Unknown players and champions are normal answers; everything else says something about OP.GG.
+    if (err.kind === 'not_found') log.debug(`${call}: not found (${Date.now() - started} ms)`);
+    else if (err.kind === 'rate_limited') log.warn(`${call}: rate limited`, err);
+    else log.warn(`${call} failed after ${Date.now() - started} ms`, err);
+    throw err;
+  }
+}
+
+/** The tool and the arguments that tell which call this was: the player, champion or position. */
+function describeCall(name, args) {
+  const what = args.game_name ? `${args.game_name}#${args.tag_line} (${args.region})` : [args.champion, args.champions, args.position].flat().filter(Boolean).join(' ');
+  return what ? `${name} ${what}` : name;
+}
+
+async function callToolOnce(name, args, retry) {
   await (ready ?? connect());
   try {
     const result = await post({ id: nextId++, method: 'tools/call', params: { name, arguments: args } });
@@ -114,8 +139,9 @@ async function callTool(name, args, retry = true) {
     }
   } catch (err) {
     if (!err.expired || !retry) throw err;
+    log.info('OP.GG session expired, reconnecting.');
     ready = null;
-    return callTool(name, args, false);
+    return callToolOnce(name, args, false);
   }
 }
 

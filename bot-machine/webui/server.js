@@ -203,7 +203,6 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': 'sid=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
   }
   if (method === 'GET' && url.pathname === '/api/bots') return send(res, 200, await listBots());
-  if (method === 'POST' && url.pathname === '/api/update-all') return result(res, await botctl(['update-all']));
 
   if (method === 'POST' && url.pathname === '/api/bots') {
     const { name, url: repo, path: sub = '' } = body;
