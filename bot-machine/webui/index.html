@@ -50,6 +50,12 @@
   .logbar { margin-bottom: 6px; }
   pre.log { max-height: 480px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre; overflow-x: auto; }
   pre.log .debug { color: var(--muted); }
+  pre.log.no-debug .debug, pre.log.no-info .info, pre.log.no-warn .warn, pre.log.no-error .error { display: none; }
+  .levels { gap: 4px; }
+  .levels button { padding: 2px 9px; font-size: 13px; border-radius: 999px; color: var(--muted); }
+  .levels button[aria-pressed="true"] { color: var(--text); border-color: var(--accent); background: var(--bg); }
+  .levels button[aria-pressed="false"] { opacity: .55; text-decoration: line-through; }
+  .levels .count { margin-left: 5px; color: var(--muted); font-variant-numeric: tabular-nums; }
   pre.log .warn { color: var(--warn); }
   pre.log .error { color: var(--bad); }
   .varname { flex: 0 0 160px; font-family: ui-monospace, monospace; font-size: 12.5px; }
@@ -256,10 +262,12 @@ function logLines(output) {
   let level = '';
   return output.split('\n').map((line) => {
     const match = LEVEL_RE.exec(line);
-    if (match) level = match[1] === 'INFO' ? '' : match[1].toLowerCase();
+    if (match) level = match[1].toLowerCase();
     return el('span', { className: level, textContent: `${line}\n` });
   });
 }
+
+const LEVELS = ['debug', 'info', 'warn', 'error'];
 
 async function toggleLogs(bot, box, button) {
   if (box.childElementCount) {
@@ -268,16 +276,36 @@ async function toggleLogs(bot, box, button) {
   }
   button.classList.add('active');
   const text = el('pre', { className: 'log' });
+  // One toggle per level; lines without a level (npm output, stack traces before the first line) always show.
+  const counts = {};
+  const toggles = LEVELS.map((level) => {
+    counts[level] = el('span', { className: 'count' });
+    const toggle = el('button', {
+      type: 'button',
+      title: `Show or hide ${level} lines`,
+      onclick: () => {
+        const on = toggle.getAttribute('aria-pressed') !== 'true';
+        toggle.setAttribute('aria-pressed', String(on));
+        text.classList.toggle(`no-${level}`, !on);
+      },
+    }, level[0].toUpperCase() + level.slice(1), counts[level]);
+    toggle.setAttribute('aria-pressed', 'true');
+    return toggle;
+  });
   const load = async () => {
-    const { data } = await api('GET', `/api/bots/${bot.name}/logs?lines=200`);
-    if (data.output) text.replaceChildren(...logLines(data.output));
+    const { data } = await api('GET', `/api/bots/${bot.name}/logs?lines=500`);
+    const lines = data.output ? logLines(data.output) : [];
+    for (const level of LEVELS) counts[level].textContent = lines.filter((line) => line.className === level && LEVEL_RE.test(line.textContent)).length;
+    if (lines.length) text.replaceChildren(...lines);
     else text.textContent = '(log is empty)';
     text.scrollTop = text.scrollHeight;
   };
+  const reload = el('button', { className: 'ghost icon', innerHTML: ICONS.refresh, title: 'Refresh the log', onclick: load });
+  reload.setAttribute('aria-label', 'Refresh the log');
   box.replaceChildren(
     el('div', { className: 'row spread logbar' },
-      el('span', { className: 'muted', textContent: 'Last 200 log lines' }),
-      el('button', { className: 'ghost icon', innerHTML: ICONS.refresh, title: 'Refresh the log', 'aria-label': 'Refresh the log', onclick: load }),
+      el('div', { className: 'row levels' }, ...toggles),
+      el('div', { className: 'row' }, el('span', { className: 'muted', textContent: 'Last 500 lines' }), reload),
     ),
     text,
   );
