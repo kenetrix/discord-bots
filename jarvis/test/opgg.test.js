@@ -93,6 +93,7 @@ test('a name without tag is tried with the default tags of the region', async (t
   const asked = [];
   const rpc = (body) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
   global.fetch = async (url, init) => {
+    if (String(url).includes('/summoners/search')) return new Response('0:{}', { headers: { 'content-type': 'text/x-component' } });
     const body = JSON.parse(init.body);
     if (body.method === 'initialize') return rpc({ jsonrpc: '2.0', id: body.id, result: {} });
     if (body.method === 'notifications/initialized') return new Response(null, { status: 202 });
