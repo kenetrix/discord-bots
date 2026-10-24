@@ -5,7 +5,7 @@ const { opggUrl } = require('./opgg');
 
 const PREFIX = 'scout:';
 const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPORT: 'Support' };
-const ROLE_ICON = { TOP: '⚔️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
+const ROLE_ICON = { TOP: '🏝️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
 const ROLE_ORDER = Object.keys(ROLE_LABEL);
 const COLOR = 0xc89b3c;
 const LEGEND = '🚫 = we ban it · ➜ = likely pick after our bans';
@@ -103,7 +103,7 @@ function buttons(report, { back = false } = {}) {
 /** Players that could not be scouted, named first so nobody misses them. */
 const notScouted = (failed) => (failed.length ? `⚠️ **Not scouted:**\n${failed.map((f) => `• ${f}`).join('\n')}\n\n` : '');
 
-/** "⚔️ Top vs Name · our pick: Malphite or Yasuo": the enemy expected in a lane and what our player there should pick. */
+/** "🏝️ Top vs Name · our pick: Malphite or Yasuo": the enemy expected in a lane and what our player there should pick. */
 function laneLine(e) {
   const name = `**${escapeMarkdown(e.player.riotId.split('#')[0])}**${e.player.guessedTag ? '\\*' : ''}`;
   const counter = e.counter?.pick ? `**${e.counter.pick.name}**${e.counter.alternative ? ` or ${e.counter.alternative.name}` : ''}` : 'no counter data';

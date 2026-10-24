@@ -42,7 +42,7 @@ test('overview shows only bans, lanes and counter picks, with a button per playe
   const message = overview(report);
   const embed = message.embeds[0].toJSON();
   assert.equal(embed.fields.length, 1);
-  assert.equal(embed.fields[0].value, '⚔️ Top vs **Top One** · our pick: **Vayne** or Teemo\n🛡️ Support vs **Sup** · our pick: no counter data');
+  assert.equal(embed.fields[0].value, '🏝️ Top vs **Top One** · our pick: **Vayne** or Teemo\n🛡️ Support vs **Sup** · our pick: no counter data');
   assert.doesNotMatch(JSON.stringify(embed), /Gold|threat|Thresh/);
   const ids = message.components.flatMap((row) => row.toJSON().components.map((c) => c.custom_id));
   assert.deepEqual(ids, ['scout:abc123:p0', 'scout:abc123:p1', 'scout:abc123:bans']);
