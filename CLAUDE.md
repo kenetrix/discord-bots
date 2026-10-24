@@ -1,6 +1,6 @@
 # Project rules
 
-Self-hosted Discord bots plus a Proxmox script for the machine they run on. The bot in `jarvis/` is called **Jarvis**; `proxmox-helper/ct/bot-machine.sh` and `proxmox-helper/install/bot-machine-install.sh` (community-scripts layout) create the LXC that runs it, and `bot-machine/` is the application installed in it. See `README.md` for setup.
+Self-hosted Discord bots plus a Proxmox script for the machine they run on. The bot in `jarvis/` is called **Jarvis**; `proxmox-helper/ct/bot-machine.sh` and `proxmox-helper/install/bot-machine-install.sh` (community-scripts layout) create the LXC that runs it, and `bot-machine/` is the application installed in it. See `README.md` for the bot machine and `jarvis/README.md` for the bot (setup, commands, variables).
 
 ## Language
 
