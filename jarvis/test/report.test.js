@@ -42,7 +42,7 @@ test('report sorts enemies by role and sorts their champions', () => {
 test('overview shows only bans, lanes and counter picks, with a button per player plus Bans', () => {
   const message = overview(report);
   const embed = message.embeds[0].toJSON();
-  assert.match(embed.description, /^\*\*Priority bans\*\* \(strongest first\)\n1\. 🏝️ Garen$/);
+  assert.match(embed.description, /^🔥 \*\*Priority bans\*\* \(strongest first\)\n\*\*Top:\*\* Garen$/);
   assert.deepEqual(
     embed.fields.map((f) => [f.name, f.value]),
     [
@@ -76,7 +76,7 @@ test('button ids and small helpers', () => {
 test('players that could not be scouted are named at the top of the overview', () => {
   const description = overview(withMissing).embeds[0].toJSON().description;
   assert.match(description, /^⚠️ \*\*Not scouted:\*\*\n• Ghost: no player/);
-  assert.match(description, /\*\*Priority bans\*\* \(strongest first\)\n1\. 🏝️ Garen/);
+  assert.match(description, /🔥 \*\*Priority bans\*\* \(strongest first\)\n\*\*Top:\*\* Garen/);
 });
 
 test('pool marks bans and the likely pick in one list', () => {
@@ -102,4 +102,10 @@ test('detail view says how the tag of a player scouted by name was found', () =>
     description({ guessedTag: true, namesakes: ['A', 'B', 'C', 'D', 'E', 'F_G'] }),
     /\nPicked from 7 players with this name \(active, highest rank\)\. Others: #A, #B, #C, #D, #E and 1 more\. Wrong one\? Scout again with Name#TAG\.$/,
   );
+});
+
+test('priority bans are grouped by lane in lane order, strongest first within a lane', () => {
+  const ban = (champion, player) => ({ champion, player, games: 20, winRate: 60 });
+  const grouped = { ...report, priority: [ban('Thresh', 'Sup#EUW'), ban('Garen', 'Top One#EUW'), ban('Darius', 'Top One#EUW')] };
+  assert.match(overview(grouped).embeds[0].toJSON().description, /\(strongest first\)\n\*\*Top:\*\* Garen · Darius\n\*\*Support:\*\* Thresh$/);
 });
