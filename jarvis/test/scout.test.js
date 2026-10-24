@@ -159,3 +159,23 @@ test('priority bans weight the same comfort higher on a higher ranked player', (
   const high = { ...player('High#EUW', { TOP: 20 }, [['B', 50, 30]]), rank: 'DIAMOND I 0 LP' };
   assert.deepEqual(priorityBans([low, high], 1).map((b) => b.champion), ['B']);
 });
+
+test('priority bans drop champions the player has not played lately', () => {
+  const p = {
+    ...player('Main#EUW', { MID: 20 }, [['Old', 40, 24], ['Current', 25, 14]]),
+    rank: 'GOLD II 0 LP',
+    recent: [{ name: 'Current', games: 4, wins: 3 }],
+  };
+  assert.deepEqual(priorityBans([p], 2).map((b) => b.champion), ['Current', 'Old']);
+});
+
+test('priority bans need a win rate edge and enough games, not just many games', () => {
+  const p = { ...player('Grinder#EUW', { MID: 20 }, [['Many', 90, 40], ['Few', 3, 3], ['Good', 20, 13]]), rank: 'GOLD II 0 LP' };
+  assert.deepEqual(priorityBans([p]).map((b) => b.champion), ['Good']);
+});
+
+test('priority bans put the same champion of the higher ranked player first', () => {
+  const low = { ...player('Low#EUW', { MID: 20 }, [['A', 30, 16]]), rank: 'GOLD III 0 LP' };
+  const high = { ...player('High#EUW', { TOP: 20 }, [['B', 30, 16]]), rank: 'PLATINUM IV 0 LP' };
+  assert.deepEqual(priorityBans([low, high]).map((b) => b.champion), ['B', 'A']);
+});

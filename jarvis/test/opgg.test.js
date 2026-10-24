@@ -2,7 +2,7 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseNotation } = require('../src/scout/notation');
 const { parseText } = require('../src/scout/mcp');
-const { championKey, normalizeRank, normalizeRoles, normalizeChampions } = require('../src/scout/opgg');
+const { championKey, normalizeRank, normalizeRoles, normalizeRecent, normalizeChampions } = require('../src/scout/opgg');
 
 // Shapes copied from real mcp-api.op.gg answers; names and ids replaced.
 const PROFILE = `class LolGetSummonerProfile: data
@@ -115,4 +115,12 @@ test('player links point to the OP.GG profile page', () => {
   const { opggUrl } = require('../src/scout/opgg');
   assert.equal(opggUrl('Enemy One#EUW', 'EUW'), 'https://op.gg/lol/summoners/euw/Enemy%20One-EUW');
   assert.equal(opggUrl('Rëd#1#2', 'NA'), 'https://op.gg/lol/summoners/na/R%C3%ABd%231-2');
+});
+
+test('normalizeRecent counts games and wins per champion, most played first', () => {
+  const game = (champion_name, result) => ({ participants: [{ champion_name, stats: { result } }] });
+  assert.deepEqual(normalizeRecent([game('Ahri', 'WIN'), game('Jinx', 'LOSE'), game('Ahri', 'LOSE'), {}]), [
+    { name: 'Ahri', games: 2, wins: 1 },
+    { name: 'Jinx', games: 1, wins: 0 },
+  ]);
 });

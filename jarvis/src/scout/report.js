@@ -119,7 +119,7 @@ function laneField(e, report) {
 function overview(report, options) {
   const laneIcon = (b) => ROLE_ICON[report.enemies.find((e) => e.player.riotId === b.player)?.role] ?? '❔';
   const total = report.priority.length
-    ? `**Priority bans**\n${report.priority.map((b) => `${laneIcon(b)} ${b.champion}`).join('\n')}`
+    ? `**Priority bans** (strongest first)\n${report.priority.map((b, i) => `${i + 1}. ${laneIcon(b)} ${b.champion}`).join('\n')}`
     : 'Not enough data for bans.';
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
@@ -180,9 +180,9 @@ function bansView(report) {
   const embed = new EmbedBuilder()
     .setTitle(`🚫 Bans · ${report.region}`)
     .setColor(COLOR)
-    .setDescription('Priority bans rank every champion of every enemy by threat, weighted by the player\'s rank. Bans per lane give each enemy at least one ban, at most three.')
+    .setDescription('Priority bans are the game-deciding champions, strongest first: only champions with a win rate of 52 % or more, lowered when not played in the last 20 games, times the player\'s rank. Bans per lane give each enemy at least one ban, at most three.')
     .addFields(
-      { name: '🔥 Priority bans (by threat, any player)', value: report.priority.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
+      { name: '🔥 Priority bans (by win rate and rank, any player)', value: report.priority.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
       { name: '🚫 Bans per lane (at least one per enemy)', value: report.bans.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
     );
   if (report.alternatives.length) embed.addFields({ name: 'Backup', value: report.alternatives.map(line).join('\n') });
