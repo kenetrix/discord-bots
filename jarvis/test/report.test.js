@@ -40,7 +40,7 @@ test('overview links every player and has a button per player plus Bans', () => 
   const embed = message.embeds[0].toJSON();
   assert.equal(embed.fields.length, 2);
   assert.match(embed.fields[0].value, /\[Top One#EUW\]\(https:\/\/op\.gg\/lol\/summoners\/euw\/Top%20One-EUW\)/);
-  assert.match(embed.fields[0].value, /~~Garen~~ · Other/);
+  assert.match(embed.fields[0].value, /🚫 Garen · Other/);
   assert.match(embed.fields[0].value, /🎯 Our pick: \*\*Vayne\*\*/);
   const ids = message.components.flatMap((row) => row.toJSON().components.map((c) => c.custom_id));
   assert.deepEqual(ids, ['scout:abc123:p0', 'scout:abc123:p1', 'scout:abc123:bans']);
@@ -77,7 +77,7 @@ test('pool marks bans and the likely pick in one list', () => {
     { name: 'C', games: 10, wins: 5 },
     { name: 'D', games: 5, wins: 4 },
   ];
-  assert.equal(poolText(champions, new Set(['A', 'B']), 'D', { limit: 3, stats: false }), '~~A~~ · ~~B~~ · C · ➜ **D**');
+  assert.equal(poolText(champions, new Set(['A', 'B']), 'D', { limit: 3, stats: false }), '🚫 A · 🚫 B · C · ➜ **D**');
   assert.equal(poolText(champions, new Set(), 'Z', { limit: 1, stats: true }), 'A · 30 games · 50 %\n➜ **Z** (recent games)');
   assert.equal(poolText([], new Set(), null, { limit: 3, stats: false }), 'no ranked games this season');
 });

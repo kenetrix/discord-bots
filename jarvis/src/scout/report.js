@@ -8,7 +8,7 @@ const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPO
 const ROLE_ICON = { TOP: '⛰️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
 const ROLE_ORDER = Object.keys(ROLE_LABEL);
 const COLOR = 0xc89b3c;
-const LEGEND = '~~struck~~ = we ban it · ➜ = likely pick after our bans';
+const LEGEND = '🚫 = we ban it · ➜ = likely pick after our bans';
 
 const escapeMarkdown = (text) => text.replace(/[\\[\]()*_~`|>]/g, '\\$&');
 const role = (r) => `${ROLE_ICON[r] ?? ''} ${ROLE_LABEL[r] ?? '?'}`;
@@ -38,7 +38,7 @@ function threatLevel(score, max) {
 }
 
 /**
- * The champion pool in one line or one line per champion: champions we ban are struck through and
+ * The champion pool in one line or one line per champion: champions we ban are marked with 🚫 and
  * the likely pick after the bans is marked, so both read as one list. A likely pick from recent games
  * that is not in the season pool is added at the end.
  */
@@ -48,7 +48,7 @@ function poolText(champions, banned, likely, { limit, stats }) {
     shown.push(champions.find((c) => c.name === likely) ?? { name: likely, games: 0, wins: 0, recent: true });
   }
   const entries = shown.map((c) => {
-    const name = banned.has(c.name) ? `~~${c.name}~~` : c.name === likely ? `➜ **${c.name}**` : c.name;
+    const name = banned.has(c.name) ? `🚫 ${c.name}` : c.name === likely ? `➜ **${c.name}**` : c.name;
     if (!stats) return name;
     return c.recent ? `${name} (recent games)` : `${name} · ${c.games} games · ${winRate(c)} %`;
   });
