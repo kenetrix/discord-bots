@@ -5,7 +5,7 @@ const { opggUrl } = require('./opgg');
 
 const PREFIX = 'scout:';
 const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPORT: 'Support' };
-const ROLE_ICON = { TOP: '⛰️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
+const ROLE_ICON = { TOP: '⚔️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
 const ROLE_ORDER = Object.keys(ROLE_LABEL);
 const COLOR = 0xc89b3c;
 const LEGEND = '🚫 = we ban it · ➜ = likely pick after our bans';
@@ -103,11 +103,11 @@ function buttons(report, { back = false } = {}) {
 /** Players that could not be scouted, named first so nobody misses them. */
 const notScouted = (failed) => (failed.length ? `⚠️ **Not scouted:**\n${failed.map((f) => `• ${f}`).join('\n')}\n\n` : '');
 
-/** "⛰️ Top · Name → Malphite or Yasuo": the enemy expected in a lane and what we pick against them. */
+/** "⚔️ Top vs Name · our pick: Malphite or Yasuo": the enemy expected in a lane and what our player there should pick. */
 function laneLine(e) {
   const name = `**${escapeMarkdown(e.player.riotId.split('#')[0])}**${e.player.guessedTag ? '\\*' : ''}`;
-  const counter = e.counter?.pick ? `${e.counter.pick.name}${e.counter.alternative ? ` or ${e.counter.alternative.name}` : ''}` : 'no counter data';
-  return `${role(e.role)} · ${name} → ${counter}`;
+  const counter = e.counter?.pick ? `**${e.counter.pick.name}**${e.counter.alternative ? ` or ${e.counter.alternative.name}` : ''}` : 'no counter data';
+  return `${role(e.role)} vs ${name} · our pick: ${counter}`;
 }
 
 /** The message for the whole team: missing players, bans, lanes and counter picks. Everything else is behind the buttons. */
@@ -118,9 +118,9 @@ function overview(report, options) {
     .setTitle(`🔍 Clash scout · ${report.region}`)
     .setColor(COLOR)
     .setDescription(`${notScouted(report.failed)}🚫 **Ban:** ${banList}${backup}`.slice(0, 4096))
-    .addFields({ name: 'Lanes and our counter picks', value: report.enemies.map(laneLine).join('\n') });
+    .addFields({ name: 'What our players should pick per lane', value: report.enemies.map(laneLine).join('\n') });
   const guessed = report.enemies.some((e) => e.player.guessedTag) ? ' · * tag guessed' : '';
-  embed.setFooter({ text: `Tap a player for their details, or Bans for the reasons${guessed}.` });
+  embed.setFooter({ text: `Our picks counter the champion each enemy most likely plays after our bans. Tap a player for details, or Bans for the reasons${guessed}.` });
   return { embeds: [embed], components: buttons(report, options) };
 }
 
