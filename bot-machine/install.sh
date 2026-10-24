@@ -25,7 +25,6 @@ WEB_DIR="$DESTDIR/opt/botctl-web"
 CONF_DIR="$DESTDIR/etc/botctl-web"
 WEB_INIT="$DESTDIR/etc/init.d/botctl-web"
 BOTS_DIR="$DESTDIR/opt/bots"
-REPOS_DIR="$DESTDIR/var/lib/botctl/repos"
 LOG_DIR="$DESTDIR/var/log/bots"
 INIT_DIR="$DESTDIR/etc/init.d"
 
@@ -63,9 +62,9 @@ create_user() {
   say "Creating the bot user and folders"
   addgroup -S bots 2>/dev/null || true
   id bots >/dev/null 2>&1 || adduser -S -D -h /home/bots -s /sbin/nologin -G bots bots
-  mkdir -p "$BOTS_DIR" "$REPOS_DIR" "$LOG_DIR"
-  chmod 0750 "$BOTS_DIR" "$REPOS_DIR" "$LOG_DIR"
-  chown bots:bots "$BOTS_DIR" "$REPOS_DIR" "$LOG_DIR"
+  mkdir -p "$BOTS_DIR" "$LOG_DIR"
+  chmod 0750 "$BOTS_DIR" "$LOG_DIR"
+  chown bots:bots "$BOTS_DIR" "$LOG_DIR"
 }
 
 install_botctl() {
@@ -167,7 +166,7 @@ cmd_uninstall() {
       fi
       rm -f "$init"
     done
-    rm -rf "$BOTS_DIR" "$DESTDIR/var/lib/botctl" "$LOG_DIR"
+    rm -rf "$BOTS_DIR" "$LOG_DIR"
     if [ -z "$DESTDIR" ]; then
       deluser bots >/dev/null 2>&1 || true
       delgroup bots >/dev/null 2>&1 || true
