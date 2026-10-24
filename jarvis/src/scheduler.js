@@ -4,6 +4,9 @@ const { stmts } = require('./db');
 const { cleanChannel } = require('./cleanup');
 const { modlog } = require('./modlog');
 const { timezone } = require('./config');
+const { logger, who, timestamp } = require('./log');
+
+const log = logger('cleaner');
 
 /** Running cron tasks, keyed by job id. */
 const tasks = new Map();
@@ -18,16 +21,17 @@ const NEEDED_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits
 async function runAllVoice(client, job) {
   const guild = await client.guilds.fetch(job.guild_id).catch(() => null);
   if (!guild) {
-    console.warn(`Cleaner #${job.id}: guild ${job.guild_id} not found.`);
+    log.warn(`#${job.id}: server ${job.guild_id} not found (Jarvis removed from it?).`);
     return null;
   }
   const channels = await guild.channels.fetch();
   const total = { deleted: 0, skippedOld: 0 };
+  const skipped = [];
   const touched = [];
   for (const channel of channels.values()) {
     if (channel?.type !== ChannelType.GuildVoice) continue;
     if (!channel.permissionsFor(guild.members.me)?.has(NEEDED_PERMISSIONS)) {
-      console.warn(`Cleaner #${job.id}: missing permissions in #${channel.name}, skipped.`);
+      skipped.push(channel.name);
       continue;
     }
     try {
@@ -40,11 +44,14 @@ async function runAllVoice(client, job) {
       total.skippedOld += result.skippedOld;
       if (result.deleted > 0) touched.push(`${channel} (${result.deleted})`);
     } catch (err) {
-      console.error(`Cleaner #${job.id} failed in #${channel.name}:`, err);
+      log.error(`#${job.id} failed in ${who(channel)} on ${who(guild)}`, err);
     }
   }
   stmts.touchJob.run(Date.now(), job.id);
-  console.log(`Cleaner #${job.id}: deleted ${total.deleted} message(s) in all voice channels.`);
+  if (skipped.length) {
+    log.warn(`#${job.id}: skipped ${skipped.length} voice channel(s) on ${who(guild)} without View Channel, Read Message History or Manage Messages: ${skipped.join(', ')}`);
+  }
+  log.info(`#${job.id}: deleted ${total.deleted} message(s) in ${touched.length} voice channel(s) on ${who(guild)}${oldNote(total)}.`);
   if (total.deleted > 0) {
     await modlog(guild, {
       action: `Scheduled cleanup #${job.id}`,
@@ -58,14 +65,22 @@ async function runAllVoice(client, job) {
   return total;
 }
 
+/** Note for messages older than 14 days that were left for the next run (rate limits). */
+const oldNote = (result) => (result.skippedOld ? `, ${result.skippedOld} old message(s) left for the next run` : '');
+
 async function runJob(client, job) {
-  if (running.has(job.id)) return null; // Previous run has not finished yet
+  if (running.has(job.id)) {
+    log.warn(`#${job.id}: previous run has not finished yet, skipped.`);
+    return null;
+  }
   running.add(job.id);
+  const started = Date.now();
+  log.info(`#${job.id}: run started.`);
   try {
     if (job.channel_id === ALL_VOICE) return await runAllVoice(client, job);
     const channel = await client.channels.fetch(job.channel_id).catch(() => null);
     if (!channel?.isTextBased()) {
-      console.warn(`Cleaner #${job.id}: channel ${job.channel_id} not found.`);
+      log.warn(`#${job.id}: channel ${job.channel_id} not found or not a text channel (deleted, or Jarvis may not see it).`);
       return null;
     }
     const result = await cleanChannel(channel, {
@@ -74,7 +89,7 @@ async function runJob(client, job) {
       keepLatest: job.keep_latest,
     });
     stmts.touchJob.run(Date.now(), job.id);
-    console.log(`Cleaner #${job.id}: deleted ${result.deleted} message(s) in #${channel.name}.`);
+    log.info(`#${job.id}: deleted ${result.deleted} message(s) in ${who(channel)} on ${who(channel.guild)}${oldNote(result)} (${Date.now() - started} ms).`);
     if (result.deleted > 0) {
       await modlog(channel.guild, {
         action: `Scheduled cleanup #${job.id}`,
@@ -87,7 +102,7 @@ async function runJob(client, job) {
     }
     return result;
   } catch (err) {
-    console.error(`Cleaner #${job.id} failed:`, err);
+    log.error(`#${job.id} failed after ${Date.now() - started} ms`, err);
     return null;
   } finally {
     running.delete(job.id);
@@ -98,17 +113,23 @@ function scheduleJob(client, job) {
   unscheduleJob(job.id);
   const task = cron.schedule(job.cron, () => runJob(client, job), { timezone, name: `cleaner-${job.id}` });
   tasks.set(job.id, task);
+  const next = task.getNextRun?.();
+  const guild = who(client.guilds.cache.get(job.guild_id) ?? { id: job.guild_id });
+  const channel = job.channel_id === ALL_VOICE ? 'all voice channels' : who(client.channels.cache.get(job.channel_id) ?? { id: job.channel_id });
+  log.info(`#${job.id}: "${job.cron}" in ${channel} on ${guild}, next run ${next ? timestamp(next) : 'unknown'}.`);
 }
 
 function unscheduleJob(id) {
-  tasks.get(id)?.stop();
+  if (!tasks.has(id)) return;
+  tasks.get(id).stop();
   tasks.delete(id);
+  log.info(`#${id}: unscheduled.`);
 }
 
 function startScheduler(client) {
   const jobs = stmts.allJobs.all();
   for (const job of jobs) scheduleJob(client, job);
-  console.log(`Scheduled ${jobs.length} cleaner job(s) (time zone ${timezone}).`);
+  log.info(`Scheduled ${jobs.length} cleaner job(s) (time zone ${timezone}).`);
 }
 
 module.exports = { ALL_VOICE, startScheduler, scheduleJob, unscheduleJob, runJob };
