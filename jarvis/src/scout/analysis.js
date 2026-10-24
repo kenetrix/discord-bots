@@ -120,11 +120,49 @@ function predictPicks(players, banned, rolePools = null) {
   });
 }
 
-/** Threat of each player's most dangerous champion, by Riot ID; used to rank the enemies against each other. */
+const TIERS = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+const DIVISION_STEP = { IV: 1, III: 2, II: 3, I: 4 };
+const UNRANKED_VALUE = 2.5; // between Silver and Gold: no rank says little about skill
+
+/** Rank as a number: the tier index plus a quarter per division, e.g. Silver IV = 2.25, Platinum IV = 4.25. */
+function rankValue(rank) {
+  const [tier, division] = (rank ?? '').split(/[ ,]/);
+  const index = TIERS.indexOf(tier);
+  if (index === -1) return null;
+  return index + (DIVISION_STEP[division] ?? 4) / 4;
+}
+
+/** 0 to 1.5 on top of the rank for a main champion with many games and a good win rate. */
+function comfort(champion) {
+  if (!champion?.games) return 0;
+  const volume = Math.min(champion.games / 100, 1);
+  const performance = Math.min(Math.max((smoothedWinRate(champion.wins, champion.games) - 0.45) / 0.1, 0), 1);
+  return 1.5 * volume * performance;
+}
+
+const THREAT_LEVELS = [
+  { min: 6, level: 'high' }, // Diamond and up, or Emerald with a strong main
+  { min: 3.5, level: 'medium' }, // Platinum, or Gold with a strong main
+  { min: -Infinity, level: 'low' },
+];
+
+/**
+ * How dangerous each player is on an absolute scale, by Riot ID: their rank first, then games and
+ * win rate on their most dangerous champion. Also returns that champion and the parts of the score.
+ */
 function playerThreats(players) {
   const best = new Map();
   for (const t of rankThreats(players)) if (!best.has(t.player)) best.set(t.player, t);
-  return best;
+  return new Map(
+    players.map((player) => {
+      const top = best.get(player.riotId) ?? null;
+      const rank = rankValue(player.rank);
+      const main = top && player.champions.find((c) => c.name === top.champion);
+      const score = (rank ?? UNRANKED_VALUE) + comfort(main);
+      const { level } = THREAT_LEVELS.find((l) => score >= l.min);
+      return [player.riotId, { ...top, player: player.riotId, ranked: rank !== null, score, level }];
+    }),
+  );
 }
 
 const PLAN_RULES = [
@@ -189,6 +227,7 @@ module.exports = {
   assignRoles,
   secondRole,
   predictPicks,
+  rankValue,
   playerThreats,
   gamePlan,
   suggestComp,

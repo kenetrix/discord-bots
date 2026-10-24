@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildReport, overview, render, parseButton, shortRank, threatLevel, poolText } = require('../src/scout/report');
+const { buildReport, overview, render, parseButton, shortRank, poolText } = require('../src/scout/report');
 
 const player = (riotId, role, champion) => ({
   riotId,
@@ -19,7 +19,10 @@ const report = buildReport({
   ],
   comp: [{ role: 'TOP', against: 'Garen', pick: { name: 'Vayne' }, alternative: { name: 'Teemo' } }],
   flex: [{ player: 'Top One#EUW', role: 'JUNGLE', against: 'Wukong', pick: { name: 'Rammus' } }],
-  threats: new Map([['Sup#EUW', { score: 2 }], ['Top One#EUW', { score: 4 }]]),
+  threats: new Map([
+    ['Sup#EUW', { level: 'medium', ranked: true, champion: 'Thresh', games: 50, winRate: 60 }],
+    ['Top One#EUW', { level: 'high', ranked: true, champion: 'Garen', games: 50, winRate: 60 }],
+  ]),
   bans: [{ champion: 'Garen', player: 'Top One#EUW', games: 50, winRate: 60 }],
   alternatives: [],
   plan: [],
@@ -51,6 +54,7 @@ test('detail views carry an Overview button and show the second role', () => {
   const fields = view.embeds[0].toJSON().fields;
   assert.match(fields.find((f) => f.name.startsWith('Second role')).value, /Wukong.*Rammus/);
   assert.ok(view.components[1].toJSON().components.some((c) => c.custom_id === 'scout:abc123:back'));
+  assert.equal(view.embeds[0].toJSON().description, 'Gold II 40 LP · 52 % WR\n🔴 High threat: Gold II · best on Garen (50 games, 60 %)');
   assert.ok(render(report, 'bans'));
   assert.equal(render(report, 'back').components[1].toJSON().components.length, 1);
   assert.equal(render(report, 'p7'), null);
@@ -61,7 +65,6 @@ test('button ids and small helpers', () => {
   assert.equal(parseButton('rolepanel:1'), null);
   assert.equal(shortRank('GRANDMASTER 1806 LP, 52 % WR'), 'Grandmaster 1806 LP');
   assert.equal(shortRank(null), 'Unranked');
-  assert.equal(threatLevel(0, 0), '🟢 Low threat');
 });
 
 test('players that could not be scouted are named at the top of the overview', () => {

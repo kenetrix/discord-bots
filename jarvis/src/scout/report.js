@@ -25,16 +25,12 @@ function shortRank(rank) {
 /** "Master 26 LP · 51 % WR", or "Unranked". */
 const rankLine = (rank) => [shortRank(rank), rank?.split(', ')[1]].filter(Boolean).join(' · ');
 
-const THREAT_LEVELS = [
-  { min: 0.75, label: '🔴 High threat' },
-  { min: 0.45, label: '🟠 Medium threat' },
-  { min: 0, label: '🟢 Low threat' },
-];
+const THREAT_LABEL = { high: '🔴 High threat', medium: '🟠 Medium threat', low: '🟢 Low threat' };
 
-/** The player's threat compared with the most dangerous enemy, as a label. */
-function threatLevel(score, max) {
-  const share = max ? score / max : 0;
-  return THREAT_LEVELS.find((level) => share >= level.min).label;
+/** "Platinum IV · best on Syndra (25 games, 40 %)": what the threat level is based on. */
+function threatReason(threat, rank) {
+  const base = threat?.ranked ? shortRank(rank).replace(/ \d+ LP$/, '') : 'unranked';
+  return threat?.champion ? `${base} · best on ${threat.champion} (${threat.games} games, ${threat.winRate} %)` : base;
 }
 
 /**
@@ -68,7 +64,6 @@ function matchupText(likely, pick, alternative) {
  * `players`, `picks`, `comp` and `flex` are the outputs of opgg.js and analysis.js.
  */
 function buildReport({ id, region, players, picks, comp, flex, threats, bans, alternatives, plan, failed }) {
-  const maxThreat = Math.max(0, ...[...threats.values()].map((t) => t.score));
   const enemies = players
     .map((player) => {
       const pick = picks.find((p) => p.player === player.riotId);
@@ -79,7 +74,8 @@ function buildReport({ id, region, players, picks, comp, flex, threats, bans, al
         counter: comp.find((c) => c.role === pick.role) ?? null,
         second: pick.second,
         flex: flex.find((f) => f.player === player.riotId) ?? null,
-        threat: threatLevel(threats.get(player.riotId)?.score ?? 0, maxThreat),
+        threat: THREAT_LABEL[threats.get(player.riotId)?.level ?? 'low'],
+        threatReason: threatReason(threats.get(player.riotId), player.rank),
       };
     })
     .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
@@ -130,7 +126,7 @@ function overview(report, options) {
       })),
     );
   const guessed = report.enemies.some((e) => e.player.guessedTag) ? ' · * tag guessed' : '';
-  embed.setFooter({ text: `${LEGEND}${guessed}\nTap a player or Bans for details.` });
+  embed.setFooter({ text: `${LEGEND}${guessed}\nThreat: rank first, then games and win rate on their best champion.\nTap a player or Bans for details.` });
   return { embeds: [embed], components: buttons(report, options) };
 }
 
@@ -147,7 +143,7 @@ function playerView(report, index) {
     .setTitle(`${role(e.role)} · ${p.riotId}`)
     .setURL(opggUrl(p.riotId, report.region))
     .setColor(COLOR)
-    .setDescription(`${rankLine(p.rank)}\n${e.threat}${p.guessedTag ? '\nTag guessed from the region.' : ''}`)
+    .setDescription(`${rankLine(p.rank)}\n${e.threat}: ${e.threatReason}${p.guessedTag ? '\nTag guessed from the region.' : ''}`)
     .addFields(
       { name: 'Champion pool (ranked, this season)', value: poolText(p.champions, report.banned, e.champion, { limit: 6, stats: true }) },
       {
@@ -193,4 +189,4 @@ function render(report, view) {
   return index !== undefined && report.enemies[index] ? playerView(report, Number(index)) : null;
 }
 
-module.exports = { buildReport, overview, render, parseButton, shortRank, threatLevel, poolText };
+module.exports = { buildReport, overview, render, parseButton, shortRank, poolText };

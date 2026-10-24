@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { recommendBans, assignRoles, secondRole, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../src/scout/analysis');
+const { recommendBans, assignRoles, secondRole, predictPicks, playerThreats, rankValue, suggestComp, suggestFlexCounters, gamePlan } = require('../src/scout/analysis');
 const { parseRiotId } = require('../src/scout/opgg');
 
 const player = (riotId, roles, champions) => ({
@@ -104,7 +104,24 @@ test('flex counters avoid bans and picks already suggested', async () => {
   assert.equal(flex.pick.name, 'Vi');
 });
 
-test('player threat ranks the one-trick highest', () => {
-  const threats = playerThreats(team);
-  assert.equal([...threats.values()].sort((a, b) => b.score - a.score)[0].player, 'Mid#EUW');
+test('threat puts rank first: a Platinum player outranks a Silver one-trick', () => {
+  const silver = { ...player('Silver#EUW', { MID: 14 }, [['ChoGath', 89, 45], ['Yone', 73, 36]]), rank: 'SILVER IV 14 LP, 49 % WR' };
+  const plat = { ...player('Plat#EUW', { ADC: 9 }, [['Syndra', 25, 10], ['Ziggs', 14, 9]]), rank: 'PLATINUM IV 87 LP, 51 % WR' };
+  const threats = playerThreats([silver, plat]);
+  assert.equal(threats.get('Silver#EUW').level, 'low');
+  assert.equal(threats.get('Plat#EUW').level, 'medium');
+  assert.ok(threats.get('Plat#EUW').score > threats.get('Silver#EUW').score);
+  assert.equal(threats.get('Silver#EUW').champion, 'ChoGath');
+});
+
+test('threat levels follow the rank, a strong main lifts it', () => {
+  const at = (rank, champions = [['A', 10, 5]]) => playerThreats([{ ...player('X#EUW', { MID: 10 }, champions), rank }]).get('X#EUW');
+  assert.equal(rankValue('SILVER IV 14 LP, 49 % WR'), 2.25);
+  assert.equal(rankValue('MASTER 26 LP, 51 % WR'), 8);
+  assert.equal(rankValue(null), null);
+  assert.equal(at('DIAMOND IV 0 LP').level, 'high');
+  assert.equal(at('EMERALD IV 0 LP').level, 'medium');
+  assert.equal(at('EMERALD II 0 LP', [['A', 200, 130]]).level, 'high');
+  assert.equal(at('GOLD IV 0 LP').level, 'low');
+  assert.equal(at(null).ranked, false);
 });
