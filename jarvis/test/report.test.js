@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildReport, overview, render, parseButton, shortRank, threatDots } = require('../src/scout/report');
+const { buildReport, overview, render, parseButton, shortRank, threatLevel, poolText } = require('../src/scout/report');
 
 const player = (riotId, role, champion) => ({
   riotId,
@@ -26,11 +26,13 @@ const report = buildReport({
   failed: [],
 });
 
+const withMissing = { ...report, failed: ['Ghost: no player with this name and tag #EUW, #EUW1 in EUW. Add the tag (Name#TAG).'] };
+
 test('report sorts enemies by role and sorts their champions', () => {
   assert.deepEqual(report.enemies.map((e) => e.role), ['TOP', 'SUPPORT']);
   assert.equal(report.enemies[0].player.champions[0].name, 'Garen');
-  assert.equal(report.enemies[0].dots, '●●●●●');
-  assert.equal(report.enemies[1].dots, '●●●○○');
+  assert.equal(report.enemies[0].threat, '🔴 High threat');
+  assert.equal(report.enemies[1].threat, '🟠 Medium threat');
 });
 
 test('overview links every player and has a button per player plus Bans', () => {
@@ -38,7 +40,8 @@ test('overview links every player and has a button per player plus Bans', () => 
   const embed = message.embeds[0].toJSON();
   assert.equal(embed.fields.length, 2);
   assert.match(embed.fields[0].value, /\[Top One#EUW\]\(https:\/\/op\.gg\/lol\/summoners\/euw\/Top%20One-EUW\)/);
-  assert.match(embed.fields[0].value, /After bans: \*\*Garen\*\* → pick \*\*Vayne\*\*/);
+  assert.match(embed.fields[0].value, /🚫 Garen · Other/);
+  assert.match(embed.fields[0].value, /🎯 Our pick: \*\*Vayne\*\*/);
   const ids = message.components.flatMap((row) => row.toJSON().components.map((c) => c.custom_id));
   assert.deepEqual(ids, ['scout:abc123:p0', 'scout:abc123:p1', 'scout:abc123:bans']);
 });
@@ -46,7 +49,7 @@ test('overview links every player and has a button per player plus Bans', () => 
 test('detail views carry an Overview button and show the second role', () => {
   const view = render(report, 'p0');
   const fields = view.embeds[0].toJSON().fields;
-  assert.match(fields.find((f) => f.name === 'Second role').value, /Wukong.*Rammus/);
+  assert.match(fields.find((f) => f.name.startsWith('Second role')).value, /Wukong.*Rammus/);
   assert.ok(view.components[1].toJSON().components.some((c) => c.custom_id === 'scout:abc123:back'));
   assert.ok(render(report, 'bans'));
   assert.equal(render(report, 'back').components[1].toJSON().components.length, 1);
@@ -58,5 +61,23 @@ test('button ids and small helpers', () => {
   assert.equal(parseButton('rolepanel:1'), null);
   assert.equal(shortRank('GRANDMASTER 1806 LP, 52 % WR'), 'Grandmaster 1806 LP');
   assert.equal(shortRank(null), 'Unranked');
-  assert.equal(threatDots(0, 0), '○○○○○');
+  assert.equal(threatLevel(0, 0), '🟢 Low threat');
+});
+
+test('players that could not be scouted are named at the top of the overview', () => {
+  const description = overview(withMissing).embeds[0].toJSON().description;
+  assert.match(description, /^⚠️ \*\*Not scouted:\*\*\n• Ghost: no player/);
+  assert.match(description, /🚫 \*\*Ban:\*\* \*\*Garen\*\*/);
+});
+
+test('pool marks bans and the likely pick in one list', () => {
+  const champions = [
+    { name: 'A', games: 30, wins: 15 },
+    { name: 'B', games: 20, wins: 12 },
+    { name: 'C', games: 10, wins: 5 },
+    { name: 'D', games: 5, wins: 4 },
+  ];
+  assert.equal(poolText(champions, new Set(['A', 'B']), 'D', { limit: 3, stats: false }), '🚫 A · 🚫 B · C · ➜ **D**');
+  assert.equal(poolText(champions, new Set(), 'Z', { limit: 1, stats: true }), 'A · 30 games · 50 %\n➜ **Z** (recent games)');
+  assert.equal(poolText([], new Set(), null, { limit: 3, stats: false }), 'no ranked games this season');
 });

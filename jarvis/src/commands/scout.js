@@ -64,7 +64,8 @@ async function scout(interaction, ids, region) {
   await target.send({ content: `Scouting report requested by ${interaction.user}`, ...overview(report), allowedMentions: { parse: [] } });
 
   const where = voice && !canPost ? ` I may not write in ${voice}, so I posted it here.` : '';
-  return interaction.editReply(`Posted the report in ${target}.${where}`);
+  const missing = failed.length ? `\n⚠️ Not scouted:\n${failed.map((f) => `• ${f}`).join('\n')}` : '';
+  return interaction.editReply(`Posted the report in ${target}.${where}${missing}`);
 }
 
 module.exports = {
