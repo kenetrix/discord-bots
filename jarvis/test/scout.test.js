@@ -169,9 +169,9 @@ test('priority bans drop champions the player has not played lately', () => {
   assert.deepEqual(priorityBans([p], 2).map((b) => b.champion), ['Current', 'Old']);
 });
 
-test('priority bans include a champion that only shows up in the recent games', () => {
-  const p = { ...player('Main#EUW', { MID: 20 }, [['Season', 20, 10]]), rank: 'GOLD II 0 LP', recent: [{ name: 'Fresh', games: 5, wins: 4 }] };
-  assert.ok(priorityBans([p]).some((b) => b.champion === 'Fresh'));
+test('priority bans need a win rate edge and enough games, not just many games', () => {
+  const p = { ...player('Grinder#EUW', { MID: 20 }, [['Many', 90, 40], ['Few', 3, 3], ['Good', 20, 13]]), rank: 'GOLD II 0 LP' };
+  assert.deepEqual(priorityBans([p]).map((b) => b.champion), ['Good']);
 });
 
 test('priority bans put the same champion of the higher ranked player first', () => {

@@ -88,25 +88,38 @@ function recommendBans(players, { count = 5, alternatives = 3 } = {}) {
   return { bans, alternatives: picked.slice(count) };
 }
 
-const RANK_WEIGHT = 1.5; // threat factor per tier: a Gold player's champion counts 1.5 times a Silver player's
+const RANK_WEIGHT = 2; // threat factor per tier: a Gold player's champion counts twice a Silver player's
 
 /** Multiplies a champion's threat by the player's strength; Gold IV (3.25) is neutral. */
 function playerWeight(player) {
   return RANK_WEIGHT ** ((rankValue(player.rank) ?? UNRANKED_VALUE) - 3.25);
 }
 
+const MIN_PRIORITY_WIN_RATE = 0.52; // smoothed win rate a champion needs to be a game-deciding ban
+const MIN_PRIORITY_GAMES = 8; // season games needed, so a short lucky streak is not a win rate
+
 /**
- * The most dangerous champions across all enemies, strongest ban first, with no limit per player,
- * so they may all belong to one player. The champion threat (season comfort and performance, discounted
- * when the player has not played it lately) is multiplied by the player's strength, since the same
- * champion is more dangerous in the hands of a higher ranked player. Ties are broken by name.
+ * The game-deciding bans across all enemies, strongest first, with no limit per player, so they may all
+ * belong to one player. A champion only qualifies with a smoothed win rate of 52 % or more, so a champion
+ * that is merely played a lot never makes it. Ranked by that win rate, lowered when the player has not
+ * played it lately and multiplied by the player's strength (rank), since the same champion is more
+ * dangerous in the hands of a higher ranked player. May return fewer than `count` bans. Ties are broken by name.
  */
 function priorityBans(players, count = 5) {
-  const weightOf = new Map(players.map((p) => [p.riotId, playerWeight(p)]));
+  const candidates = [];
+  for (const player of players) {
+    const weight = playerWeight(player);
+    for (const champion of player.champions) {
+      if (champion.games < MIN_PRIORITY_GAMES) continue;
+      const rate = smoothedWinRate(champion.wins, champion.games);
+      if (rate < MIN_PRIORITY_WIN_RATE) continue;
+      const score = rate * 100 * recency(player, champion.name) * weight;
+      candidates.push({ champion: champion.name, player: player.riotId, games: champion.games, winRate: winRate(champion), score });
+    }
+  }
   const seen = new Set();
   const ranked = [];
-  const weighted = rankThreats(players).map((t) => ({ ...t, score: t.score * weightOf.get(t.player) }));
-  for (const t of weighted.sort((a, b) => b.score - a.score || a.champion.localeCompare(b.champion))) {
+  for (const t of candidates.sort((x, y) => y.score - x.score || x.champion.localeCompare(y.champion))) {
     if (seen.has(t.champion)) continue;
     seen.add(t.champion);
     ranked.push(t);
