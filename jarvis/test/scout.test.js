@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { recommendBans, assignRoles, secondRole, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../src/scout/analysis');
+const { recommendBans, priorityBans, assignRoles, secondRole, predictPicks, playerThreats, rankValue, suggestComp, suggestFlexCounters, gamePlan } = require('../src/scout/analysis');
 const { parseRiotId } = require('../src/scout/opgg');
 
 const player = (riotId, roles, champions) => ({
@@ -104,7 +104,58 @@ test('flex counters avoid bans and picks already suggested', async () => {
   assert.equal(flex.pick.name, 'Vi');
 });
 
-test('player threat ranks the one-trick highest', () => {
-  const threats = playerThreats(team);
-  assert.equal([...threats.values()].sort((a, b) => b.score - a.score)[0].player, 'Mid#EUW');
+test('threat puts rank first: a Platinum player outranks a Silver one-trick', () => {
+  const silver = { ...player('Silver#EUW', { MID: 14 }, [['ChoGath', 89, 45], ['Yone', 73, 36]]), rank: 'SILVER IV 14 LP, 49 % WR' };
+  const plat = { ...player('Plat#EUW', { ADC: 9 }, [['Syndra', 25, 10], ['Ziggs', 14, 9]]), rank: 'PLATINUM IV 87 LP, 51 % WR' };
+  const threats = playerThreats([silver, plat]);
+  assert.equal(threats.get('Silver#EUW').level, 'low');
+  assert.equal(threats.get('Plat#EUW').level, 'medium');
+  assert.ok(threats.get('Plat#EUW').score > threats.get('Silver#EUW').score);
+  assert.equal(threats.get('Silver#EUW').champion, 'ChoGath');
+});
+
+test('threat levels follow the rank, a strong main lifts it', () => {
+  const at = (rank, champions = [['A', 10, 5]]) => playerThreats([{ ...player('X#EUW', { MID: 10 }, champions), rank }]).get('X#EUW');
+  assert.equal(rankValue('SILVER IV 14 LP, 49 % WR'), 2.25);
+  assert.equal(rankValue('MASTER 26 LP, 51 % WR'), 8);
+  assert.equal(rankValue(null), null);
+  assert.equal(at('DIAMOND IV 0 LP').level, 'high');
+  assert.equal(at('EMERALD IV 0 LP').level, 'medium');
+  assert.equal(at('EMERALD II 0 LP', [['A', 200, 130]]).level, 'high');
+  assert.equal(at('GOLD IV 0 LP').level, 'low');
+  assert.equal(at(null).ranked, false);
+});
+
+test('every player gets at least one ban, even a low-threat one', () => {
+  const { bans } = recommendBans(team);
+  assert.deepEqual(new Set(bans.map((b) => b.player)), new Set(team.map((p) => p.riotId)));
+  const twoTricks = [
+    player('A#EUW', { MID: 20 }, [['X', 100, 70], ['Y', 90, 60], ['Z', 80, 55]]),
+    player('B#EUW', { TOP: 20 }, [['W', 5, 2]]),
+  ];
+  const { bans: few, alternatives } = recommendBans(twoTricks);
+  assert.ok(few.some((b) => b.champion === 'W'));
+  assert.equal(few.filter((b) => b.player === 'A#EUW').length, 3);
+  assert.equal(few.length + alternatives.length, 4);
+});
+
+test('a champion two players share is banned once and the second player gets their next one', () => {
+  const both = [player('A#EUW', { MID: 20 }, [['Ahri', 100, 60]]), player('B#EUW', { ADC: 20 }, [['Ahri', 90, 55], ['Jinx', 20, 10]])];
+  const { bans } = recommendBans(both);
+  assert.equal(bans.filter((b) => b.champion === 'Ahri').length, 1);
+  assert.ok(bans.some((b) => b.player === 'B#EUW'));
+});
+
+test('priority bans rank all champions by threat, even all from one player', () => {
+  const star = { ...player('Star#EUW', { MID: 20 }, [['A', 200, 130], ['B', 150, 95], ['C', 120, 75], ['D', 100, 62], ['E', 90, 55]]), rank: 'MASTER 100 LP' };
+  const weak = { ...player('Weak#EUW', { TOP: 20 }, [['F', 30, 15]]), rank: 'SILVER IV 0 LP' };
+  assert.deepEqual(priorityBans([star, weak]).map((b) => b.champion), ['A', 'B', 'C', 'D', 'E']);
+  const mixed = priorityBans(team).map((b) => b.player);
+  assert.ok(new Set(mixed).size > 1);
+});
+
+test('priority bans weight the same comfort higher on a higher ranked player', () => {
+  const low = { ...player('Low#EUW', { MID: 20 }, [['A', 50, 30]]), rank: 'IRON IV 0 LP' };
+  const high = { ...player('High#EUW', { TOP: 20 }, [['B', 50, 30]]), rank: 'DIAMOND I 0 LP' };
+  assert.deepEqual(priorityBans([low, high], 1).map((b) => b.champion), ['B']);
 });

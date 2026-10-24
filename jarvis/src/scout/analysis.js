@@ -38,23 +38,51 @@ function rankThreats(players) {
 }
 
 /**
- * Picks the bans: the most dangerous champions, at most MAX_BANS_PER_PLAYER aimed at one player,
- * plus the next best candidates as alternatives.
+ * Picks the bans: first each player's most dangerous champion, so every lane gets at least one ban
+ * (while there are bans left), then the most dangerous of the rest with at most MAX_BANS_PER_PLAYER
+ * aimed at one player, plus the next best candidates as alternatives. Bans are sorted by threat.
  */
 function recommendBans(players, { count = 5, alternatives = 3 } = {}) {
+  const threats = rankThreats(players);
   const picked = [];
   const perPlayer = new Map();
   const seen = new Set();
-  for (const t of rankThreats(players)) {
-    if (seen.has(t.champion)) continue;
-    const aimed = perPlayer.get(t.player) ?? 0;
-    if (picked.length < count && aimed >= MAX_BANS_PER_PLAYER) continue;
+  const take = (t) => {
     seen.add(t.champion);
-    perPlayer.set(t.player, aimed + 1);
+    perPlayer.set(t.player, (perPlayer.get(t.player) ?? 0) + 1);
     picked.push(t);
-    if (picked.length >= count + alternatives) break;
+  };
+  // Most dangerous players first, in case there are more players than bans.
+  for (const t of threats) {
+    if (picked.length >= count) break;
+    if (!perPlayer.has(t.player) && !seen.has(t.champion)) take(t);
   }
-  return { bans: picked.slice(0, count), alternatives: picked.slice(count) };
+  for (const t of threats) {
+    if (picked.length >= count + alternatives) break;
+    if (seen.has(t.champion)) continue;
+    if (picked.length < count && (perPlayer.get(t.player) ?? 0) >= MAX_BANS_PER_PLAYER) continue;
+    take(t);
+  }
+  const bans = picked.slice(0, count).sort((x, y) => y.score - x.score);
+  return { bans, alternatives: picked.slice(count) };
+}
+
+/**
+ * The most dangerous champions across all enemies, ranked only by threat with no limit per player,
+ * so they may all belong to one player. The champion threat is weighted by the player's rank,
+ * since a champion is more dangerous in the hands of a higher ranked player.
+ */
+function priorityBans(players, count = 5) {
+  const rankOf = new Map(players.map((p) => [p.riotId, rankValue(p.rank) ?? UNRANKED_VALUE]));
+  const seen = new Set();
+  const ranked = [];
+  for (const t of rankThreats(players).map((t) => ({ ...t, score: t.score * (1 + rankOf.get(t.player) / 10) })).sort((a, b) => b.score - a.score)) {
+    if (seen.has(t.champion)) continue;
+    seen.add(t.champion);
+    ranked.push(t);
+    if (ranked.length >= count) break;
+  }
+  return ranked;
 }
 
 /** Assigns each player the role they play most, so that every role is taken at most once. */
@@ -120,11 +148,49 @@ function predictPicks(players, banned, rolePools = null) {
   });
 }
 
-/** Threat of each player's most dangerous champion, by Riot ID; used to rank the enemies against each other. */
+const TIERS = ['IRON', 'BRONZE', 'SILVER', 'GOLD', 'PLATINUM', 'EMERALD', 'DIAMOND', 'MASTER', 'GRANDMASTER', 'CHALLENGER'];
+const DIVISION_STEP = { IV: 1, III: 2, II: 3, I: 4 };
+const UNRANKED_VALUE = 2.5; // between Silver and Gold: no rank says little about skill
+
+/** Rank as a number: the tier index plus a quarter per division, e.g. Silver IV = 2.25, Platinum IV = 4.25. */
+function rankValue(rank) {
+  const [tier, division] = (rank ?? '').split(/[ ,]/);
+  const index = TIERS.indexOf(tier);
+  if (index === -1) return null;
+  return index + (DIVISION_STEP[division] ?? 4) / 4;
+}
+
+/** 0 to 1.5 on top of the rank for a main champion with many games and a good win rate. */
+function comfort(champion) {
+  if (!champion?.games) return 0;
+  const volume = Math.min(champion.games / 100, 1);
+  const performance = Math.min(Math.max((smoothedWinRate(champion.wins, champion.games) - 0.45) / 0.1, 0), 1);
+  return 1.5 * volume * performance;
+}
+
+const THREAT_LEVELS = [
+  { min: 6, level: 'high' }, // Diamond and up, or Emerald with a strong main
+  { min: 3.5, level: 'medium' }, // Platinum, or Gold with a strong main
+  { min: -Infinity, level: 'low' },
+];
+
+/**
+ * How dangerous each player is on an absolute scale, by Riot ID: their rank first, then games and
+ * win rate on their most dangerous champion. Also returns that champion and the parts of the score.
+ */
 function playerThreats(players) {
   const best = new Map();
   for (const t of rankThreats(players)) if (!best.has(t.player)) best.set(t.player, t);
-  return best;
+  return new Map(
+    players.map((player) => {
+      const top = best.get(player.riotId) ?? null;
+      const rank = rankValue(player.rank);
+      const main = top && player.champions.find((c) => c.name === top.champion);
+      const score = (rank ?? UNRANKED_VALUE) + comfort(main);
+      const { level } = THREAT_LEVELS.find((l) => score >= l.min);
+      return [player.riotId, { ...top, player: player.riotId, ranked: rank !== null, score, level }];
+    }),
+  );
 }
 
 const PLAN_RULES = [
@@ -186,9 +252,11 @@ module.exports = {
   smoothedWinRate,
   rankThreats,
   recommendBans,
+  priorityBans,
   assignRoles,
   secondRole,
   predictPicks,
+  rankValue,
   playerThreats,
   gamePlan,
   suggestComp,

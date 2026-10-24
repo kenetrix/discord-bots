@@ -5,7 +5,7 @@ const { opggUrl } = require('./opgg');
 
 const PREFIX = 'scout:';
 const ROLE_LABEL = { TOP: 'Top', JUNGLE: 'Jungle', MID: 'Mid', ADC: 'ADC', SUPPORT: 'Support' };
-const ROLE_ICON = { TOP: '⛰️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
+const ROLE_ICON = { TOP: '🏝️', JUNGLE: '🌲', MID: '✨', ADC: '🏹', SUPPORT: '🛡️' };
 const ROLE_ORDER = Object.keys(ROLE_LABEL);
 const COLOR = 0xc89b3c;
 const LEGEND = '🚫 = we ban it · ➜ = likely pick after our bans';
@@ -13,7 +13,6 @@ const LEGEND = '🚫 = we ban it · ➜ = likely pick after our bans';
 const escapeMarkdown = (text) => text.replace(/[\\[\]()*_~`|>]/g, '\\$&');
 const role = (r) => `${ROLE_ICON[r] ?? ''} ${ROLE_LABEL[r] ?? '?'}`;
 const winRate = (c) => (c.games ? Math.round((c.wins / c.games) * 100) : 0);
-const link = (player, region) => `[${escapeMarkdown(player.riotId)}](${opggUrl(player.riotId, region)})${player.guessedTag ? '\\*' : ''}`;
 
 /** "MASTER 26 LP, 51 % WR" -> "Master 26 LP": the rank without the record. */
 function shortRank(rank) {
@@ -25,16 +24,12 @@ function shortRank(rank) {
 /** "Master 26 LP · 51 % WR", or "Unranked". */
 const rankLine = (rank) => [shortRank(rank), rank?.split(', ')[1]].filter(Boolean).join(' · ');
 
-const THREAT_LEVELS = [
-  { min: 0.75, label: '🔴 High threat' },
-  { min: 0.45, label: '🟠 Medium threat' },
-  { min: 0, label: '🟢 Low threat' },
-];
+const THREAT_LABEL = { high: '🔴 High threat', medium: '🟠 Medium threat', low: '🟢 Low threat' };
 
-/** The player's threat compared with the most dangerous enemy, as a label. */
-function threatLevel(score, max) {
-  const share = max ? score / max : 0;
-  return THREAT_LEVELS.find((level) => share >= level.min).label;
+/** "Platinum IV · best on Syndra (25 games, 40 %)": what the threat level is based on. */
+function threatReason(threat, rank) {
+  const base = threat?.ranked ? shortRank(rank).replace(/ \d+ LP$/, '') : 'unranked';
+  return threat?.champion ? `${base} · best on ${threat.champion} (${threat.games} games, ${threat.winRate} %)` : base;
 }
 
 /**
@@ -67,8 +62,7 @@ function matchupText(likely, pick, alternative) {
  * Puts the analysis into one object per enemy, sorted by role, so every view reads from the same place.
  * `players`, `picks`, `comp` and `flex` are the outputs of opgg.js and analysis.js.
  */
-function buildReport({ id, region, players, picks, comp, flex, threats, bans, alternatives, plan, failed }) {
-  const maxThreat = Math.max(0, ...[...threats.values()].map((t) => t.score));
+function buildReport({ id, region, players, picks, comp, flex, threats, priority = [], bans, alternatives, plan, failed }) {
   const enemies = players
     .map((player) => {
       const pick = picks.find((p) => p.player === player.riotId);
@@ -79,11 +73,12 @@ function buildReport({ id, region, players, picks, comp, flex, threats, bans, al
         counter: comp.find((c) => c.role === pick.role) ?? null,
         second: pick.second,
         flex: flex.find((f) => f.player === player.riotId) ?? null,
-        threat: threatLevel(threats.get(player.riotId)?.score ?? 0, maxThreat),
+        threat: THREAT_LABEL[threats.get(player.riotId)?.level ?? 'low'],
+        threatReason: threatReason(threats.get(player.riotId), player.rank),
       };
     })
     .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
-  return { id, region, enemies, banned: new Set(bans.map((b) => b.champion)), bans, alternatives, plan, failed };
+  return { id, region, enemies, banned: new Set(bans.map((b) => b.champion)), priority, bans, alternatives, plan, failed };
 }
 
 function buttons(report, { back = false } = {}) {
@@ -108,29 +103,30 @@ function buttons(report, { back = false } = {}) {
 /** Players that could not be scouted, named first so nobody misses them. */
 const notScouted = (failed) => (failed.length ? `⚠️ **Not scouted:**\n${failed.map((f) => `• ${f}`).join('\n')}\n\n` : '');
 
-/** The message for the whole team: bans first, then one card per enemy, details behind the buttons. */
+/** One lane: who we face there, which of our bans are aimed at them and what our player there should pick. */
+function laneField(e, report) {
+  const name = `${escapeMarkdown(e.player.riotId.split('#')[0])}${e.player.guessedTag ? '*' : ''}`;
+  const mine = (list) => list.filter((b) => b.player === e.player.riotId).map((b) => b.champion);
+  const bans = mine(report.bans);
+  const backup = mine(report.alternatives);
+  const banText = bans.length ? bans.map((c) => `**${c}**`).join(' · ') : 'none';
+  const backupText = backup.length ? ` (backup: ${backup.join(', ')})` : '';
+  const counter = e.counter?.pick ? `**${e.counter.pick.name}**${e.counter.alternative ? ` or ${e.counter.alternative.name}` : ''}` : 'no counter data';
+  return { name: `${role(e.role)} vs ${name}`, value: `🚫 Ban: ${banText}${backupText}\n🎯 Our pick: ${counter}` };
+}
+
+/** The message for the whole team: missing players, then per lane the bans and our counter pick. Everything else is behind the buttons. */
 function overview(report, options) {
-  const banList = report.bans.map((b) => `**${b.champion}**`).join(' · ') || 'not enough data';
-  const backup = report.alternatives.length ? `\nBackup: ${report.alternatives.map((b) => b.champion).join(' · ')}` : '';
+  const total = report.priority.length
+    ? `🔥 **Priority bans:** ${report.priority.map((b) => b.champion).join(' · ')}\nThe most dangerous champions of all enemies. Below: at least one ban per lane.`
+    : 'Not enough data for bans.';
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
     .setColor(COLOR)
-    .setDescription(`${notScouted(report.failed)}🚫 **Ban:** ${banList}${backup}`.slice(0, 4096))
-    .addFields(
-      report.enemies.map((e) => ({
-        name: `${role(e.role)} · ${e.threat}`,
-        value: [
-          link(e.player, report.region),
-          rankLine(e.player.rank),
-          poolText(e.player.champions, report.banned, e.champion, { limit: 3, stats: false }),
-          e.counter?.pick ? `🎯 Our pick: **${e.counter.pick.name}**` : '🎯 Our pick: no counter data',
-          e.second ? `2nd role: ${role(e.second.role)}` : '2nd role: none',
-        ].join('\n'),
-        inline: true,
-      })),
-    );
+    .setDescription(`${notScouted(report.failed)}${total}`.slice(0, 4096))
+    .addFields(report.enemies.map((e) => laneField(e, report)));
   const guessed = report.enemies.some((e) => e.player.guessedTag) ? ' · * tag guessed' : '';
-  embed.setFooter({ text: `${LEGEND}${guessed}\nTap a player or Bans for details.` });
+  embed.setFooter({ text: `Our picks counter the champion each enemy most likely plays after our bans. Tap a player for details, or Bans for the reasons${guessed}.` });
   return { embeds: [embed], components: buttons(report, options) };
 }
 
@@ -147,7 +143,7 @@ function playerView(report, index) {
     .setTitle(`${role(e.role)} · ${p.riotId}`)
     .setURL(opggUrl(p.riotId, report.region))
     .setColor(COLOR)
-    .setDescription(`${rankLine(p.rank)}\n${e.threat}${p.guessedTag ? '\nTag guessed from the region.' : ''}`)
+    .setDescription(`${rankLine(p.rank)}\n${e.threat}: ${e.threatReason}${p.guessedTag ? '\nTag guessed from the region.' : ''}`)
     .addFields(
       { name: 'Champion pool (ranked, this season)', value: poolText(p.champions, report.banned, e.champion, { limit: 6, stats: true }) },
       {
@@ -171,8 +167,11 @@ function bansView(report) {
   const embed = new EmbedBuilder()
     .setTitle(`🚫 Bans · ${report.region}`)
     .setColor(COLOR)
-    .setDescription('Champions the enemies play most and win most with, at most three aimed at one player.')
-    .addFields({ name: 'Ban', value: report.bans.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' });
+    .setDescription('Priority bans rank every champion of every enemy by threat, weighted by the player\'s rank. Bans per lane give each enemy at least one ban, at most three.')
+    .addFields(
+      { name: '🔥 Priority bans (by threat, any player)', value: report.priority.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
+      { name: '🚫 Bans per lane (at least one per enemy)', value: report.bans.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
+    );
   if (report.alternatives.length) embed.addFields({ name: 'Backup', value: report.alternatives.map(line).join('\n') });
   if (report.plan.length) embed.addFields({ name: 'Tips', value: report.plan.map((t) => `• ${t}`).join('\n') });
   return { embeds: [embed], components: buttons(report, { back: true }) };
@@ -193,4 +192,4 @@ function render(report, view) {
   return index !== undefined && report.enemies[index] ? playerView(report, Number(index)) : null;
 }
 
-module.exports = { buildReport, overview, render, parseButton, shortRank, threatLevel, poolText };
+module.exports = { buildReport, overview, render, parseButton, shortRank, poolText };

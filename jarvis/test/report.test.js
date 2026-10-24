@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildReport, overview, render, parseButton, shortRank, threatLevel, poolText } = require('../src/scout/report');
+const { buildReport, overview, render, parseButton, shortRank, poolText } = require('../src/scout/report');
 
 const player = (riotId, role, champion) => ({
   riotId,
@@ -19,7 +19,11 @@ const report = buildReport({
   ],
   comp: [{ role: 'TOP', against: 'Garen', pick: { name: 'Vayne' }, alternative: { name: 'Teemo' } }],
   flex: [{ player: 'Top One#EUW', role: 'JUNGLE', against: 'Wukong', pick: { name: 'Rammus' } }],
-  threats: new Map([['Sup#EUW', { score: 2 }], ['Top One#EUW', { score: 4 }]]),
+  threats: new Map([
+    ['Sup#EUW', { level: 'medium', ranked: true, champion: 'Thresh', games: 50, winRate: 60 }],
+    ['Top One#EUW', { level: 'high', ranked: true, champion: 'Garen', games: 50, winRate: 60 }],
+  ]),
+  priority: [{ champion: 'Garen', player: 'Top One#EUW', games: 50, winRate: 60 }],
   bans: [{ champion: 'Garen', player: 'Top One#EUW', games: 50, winRate: 60 }],
   alternatives: [],
   plan: [],
@@ -35,13 +39,18 @@ test('report sorts enemies by role and sorts their champions', () => {
   assert.equal(report.enemies[1].threat, '🟠 Medium threat');
 });
 
-test('overview links every player and has a button per player plus Bans', () => {
+test('overview shows only bans, lanes and counter picks, with a button per player plus Bans', () => {
   const message = overview(report);
   const embed = message.embeds[0].toJSON();
-  assert.equal(embed.fields.length, 2);
-  assert.match(embed.fields[0].value, /\[Top One#EUW\]\(https:\/\/op\.gg\/lol\/summoners\/euw\/Top%20One-EUW\)/);
-  assert.match(embed.fields[0].value, /🚫 Garen · Other/);
-  assert.match(embed.fields[0].value, /🎯 Our pick: \*\*Vayne\*\*/);
+  assert.match(embed.description, /^🔥 \*\*Priority bans:\*\* Garen\n/);
+  assert.deepEqual(
+    embed.fields.map((f) => [f.name, f.value]),
+    [
+      ['🏝️ Top vs Top One', '🚫 Ban: **Garen**\n🎯 Our pick: **Vayne** or Teemo'],
+      ['🛡️ Support vs Sup', '🚫 Ban: none\n🎯 Our pick: no counter data'],
+    ],
+  );
+  assert.doesNotMatch(JSON.stringify(embed), /Gold|threat|Thresh/);
   const ids = message.components.flatMap((row) => row.toJSON().components.map((c) => c.custom_id));
   assert.deepEqual(ids, ['scout:abc123:p0', 'scout:abc123:p1', 'scout:abc123:bans']);
 });
@@ -51,6 +60,7 @@ test('detail views carry an Overview button and show the second role', () => {
   const fields = view.embeds[0].toJSON().fields;
   assert.match(fields.find((f) => f.name.startsWith('Second role')).value, /Wukong.*Rammus/);
   assert.ok(view.components[1].toJSON().components.some((c) => c.custom_id === 'scout:abc123:back'));
+  assert.equal(view.embeds[0].toJSON().description, 'Gold II 40 LP · 52 % WR\n🔴 High threat: Gold II · best on Garen (50 games, 60 %)');
   assert.ok(render(report, 'bans'));
   assert.equal(render(report, 'back').components[1].toJSON().components.length, 1);
   assert.equal(render(report, 'p7'), null);
@@ -61,13 +71,12 @@ test('button ids and small helpers', () => {
   assert.equal(parseButton('rolepanel:1'), null);
   assert.equal(shortRank('GRANDMASTER 1806 LP, 52 % WR'), 'Grandmaster 1806 LP');
   assert.equal(shortRank(null), 'Unranked');
-  assert.equal(threatLevel(0, 0), '🟢 Low threat');
 });
 
 test('players that could not be scouted are named at the top of the overview', () => {
   const description = overview(withMissing).embeds[0].toJSON().description;
   assert.match(description, /^⚠️ \*\*Not scouted:\*\*\n• Ghost: no player/);
-  assert.match(description, /🚫 \*\*Ban:\*\* \*\*Garen\*\*/);
+  assert.match(description, /🔥 \*\*Priority bans:\*\* Garen/);
 });
 
 test('pool marks bans and the likely pick in one list', () => {
