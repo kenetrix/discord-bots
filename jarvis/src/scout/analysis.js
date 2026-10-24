@@ -67,6 +67,24 @@ function recommendBans(players, { count = 5, alternatives = 3 } = {}) {
   return { bans, alternatives: picked.slice(count) };
 }
 
+/**
+ * The most dangerous champions across all enemies, ranked only by threat with no limit per player,
+ * so they may all belong to one player. The champion threat is weighted by the player's rank,
+ * since a champion is more dangerous in the hands of a higher ranked player.
+ */
+function priorityBans(players, count = 5) {
+  const rankOf = new Map(players.map((p) => [p.riotId, rankValue(p.rank) ?? UNRANKED_VALUE]));
+  const seen = new Set();
+  const ranked = [];
+  for (const t of rankThreats(players).map((t) => ({ ...t, score: t.score * (1 + rankOf.get(t.player) / 10) })).sort((a, b) => b.score - a.score)) {
+    if (seen.has(t.champion)) continue;
+    seen.add(t.champion);
+    ranked.push(t);
+    if (ranked.length >= count) break;
+  }
+  return ranked;
+}
+
 /** Assigns each player the role they play most, so that every role is taken at most once. */
 function assignRoles(players) {
   const gamesIn = (player, role) => player.roles.find((r) => r.role === role)?.games ?? 0;
@@ -234,6 +252,7 @@ module.exports = {
   smoothedWinRate,
   rankThreats,
   recommendBans,
+  priorityBans,
   assignRoles,
   secondRole,
   predictPicks,

@@ -62,7 +62,7 @@ function matchupText(likely, pick, alternative) {
  * Puts the analysis into one object per enemy, sorted by role, so every view reads from the same place.
  * `players`, `picks`, `comp` and `flex` are the outputs of opgg.js and analysis.js.
  */
-function buildReport({ id, region, players, picks, comp, flex, threats, bans, alternatives, plan, failed }) {
+function buildReport({ id, region, players, picks, comp, flex, threats, priority = [], bans, alternatives, plan, failed }) {
   const enemies = players
     .map((player) => {
       const pick = picks.find((p) => p.player === player.riotId);
@@ -78,7 +78,7 @@ function buildReport({ id, region, players, picks, comp, flex, threats, bans, al
       };
     })
     .sort((a, b) => ROLE_ORDER.indexOf(a.role) - ROLE_ORDER.indexOf(b.role));
-  return { id, region, enemies, banned: new Set(bans.map((b) => b.champion)), bans, alternatives, plan, failed };
+  return { id, region, enemies, banned: new Set(bans.map((b) => b.champion)), priority, bans, alternatives, plan, failed };
 }
 
 function buttons(report, { back = false } = {}) {
@@ -117,7 +117,9 @@ function laneField(e, report) {
 
 /** The message for the whole team: missing players, then per lane the bans and our counter pick. Everything else is behind the buttons. */
 function overview(report, options) {
-  const total = report.bans.length ? `🚫 All bans: ${report.bans.map((b) => b.champion).join(' · ')}` : 'Not enough data for bans.';
+  const total = report.priority.length
+    ? `🔥 **Priority bans:** ${report.priority.map((b) => b.champion).join(' · ')}\nThe most dangerous champions of all enemies. Below: at least one ban per lane.`
+    : 'Not enough data for bans.';
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
     .setColor(COLOR)
@@ -165,8 +167,11 @@ function bansView(report) {
   const embed = new EmbedBuilder()
     .setTitle(`🚫 Bans · ${report.region}`)
     .setColor(COLOR)
-    .setDescription('At least one ban per enemy, then the champions they play most and win most with, at most three aimed at one player.')
-    .addFields({ name: 'Ban', value: report.bans.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' });
+    .setDescription('Priority bans rank every champion of every enemy by threat, weighted by the player\'s rank. Bans per lane give each enemy at least one ban, at most three.')
+    .addFields(
+      { name: '🔥 Priority bans (by threat, any player)', value: report.priority.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
+      { name: '🚫 Bans per lane (at least one per enemy)', value: report.bans.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
+    );
   if (report.alternatives.length) embed.addFields({ name: 'Backup', value: report.alternatives.map(line).join('\n') });
   if (report.plan.length) embed.addFields({ name: 'Tips', value: report.plan.map((t) => `• ${t}`).join('\n') });
   return { embeds: [embed], components: buttons(report, { back: true }) };

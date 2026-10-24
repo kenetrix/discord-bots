@@ -1,7 +1,7 @@
 const { randomUUID } = require('node:crypto');
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { REGIONS, parseRiotId, getPlayer, getCounters, getRolePools, getChampionTags } = require('../scout/opgg');
-const { recommendBans, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../scout/analysis');
+const { recommendBans, priorityBans, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../scout/analysis');
 const { buildReport, overview, render, parseButton } = require('../scout/report');
 const { TtlCache } = require('../scout/cache');
 
@@ -52,7 +52,7 @@ async function scout(interaction, ids, region) {
   const plan = gamePlan(picks, (name) => tags.get(name));
   const threats = playerThreats(players);
   const id = randomUUID().slice(0, 8);
-  const report = buildReport({ id, region, players, picks, comp, flex, threats, bans, alternatives, plan, failed });
+  const report = buildReport({ id, region, players, picks, comp, flex, threats, priority: priorityBans(players), bans, alternatives, plan, failed });
   reports.get(id, () => report);
 
   // Post into the text chat of the caller's voice channel, so the whole team sees it; else into this channel.

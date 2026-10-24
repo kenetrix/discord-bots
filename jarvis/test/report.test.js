@@ -23,6 +23,7 @@ const report = buildReport({
     ['Sup#EUW', { level: 'medium', ranked: true, champion: 'Thresh', games: 50, winRate: 60 }],
     ['Top One#EUW', { level: 'high', ranked: true, champion: 'Garen', games: 50, winRate: 60 }],
   ]),
+  priority: [{ champion: 'Garen', player: 'Top One#EUW', games: 50, winRate: 60 }],
   bans: [{ champion: 'Garen', player: 'Top One#EUW', games: 50, winRate: 60 }],
   alternatives: [],
   plan: [],
@@ -41,7 +42,7 @@ test('report sorts enemies by role and sorts their champions', () => {
 test('overview shows only bans, lanes and counter picks, with a button per player plus Bans', () => {
   const message = overview(report);
   const embed = message.embeds[0].toJSON();
-  assert.equal(embed.description, '🚫 All bans: Garen');
+  assert.match(embed.description, /^🔥 \*\*Priority bans:\*\* Garen\n/);
   assert.deepEqual(
     embed.fields.map((f) => [f.name, f.value]),
     [
@@ -75,7 +76,7 @@ test('button ids and small helpers', () => {
 test('players that could not be scouted are named at the top of the overview', () => {
   const description = overview(withMissing).embeds[0].toJSON().description;
   assert.match(description, /^⚠️ \*\*Not scouted:\*\*\n• Ghost: no player/);
-  assert.match(description, /🚫 All bans: Garen$/);
+  assert.match(description, /🔥 \*\*Priority bans:\*\* Garen/);
 });
 
 test('pool marks bans and the likely pick in one list', () => {

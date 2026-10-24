@@ -1,6 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { recommendBans, assignRoles, secondRole, predictPicks, playerThreats, rankValue, suggestComp, suggestFlexCounters, gamePlan } = require('../src/scout/analysis');
+const { recommendBans, priorityBans, assignRoles, secondRole, predictPicks, playerThreats, rankValue, suggestComp, suggestFlexCounters, gamePlan } = require('../src/scout/analysis');
 const { parseRiotId } = require('../src/scout/opgg');
 
 const player = (riotId, roles, champions) => ({
@@ -144,4 +144,18 @@ test('a champion two players share is banned once and the second player gets the
   const { bans } = recommendBans(both);
   assert.equal(bans.filter((b) => b.champion === 'Ahri').length, 1);
   assert.ok(bans.some((b) => b.player === 'B#EUW'));
+});
+
+test('priority bans rank all champions by threat, even all from one player', () => {
+  const star = { ...player('Star#EUW', { MID: 20 }, [['A', 200, 130], ['B', 150, 95], ['C', 120, 75], ['D', 100, 62], ['E', 90, 55]]), rank: 'MASTER 100 LP' };
+  const weak = { ...player('Weak#EUW', { TOP: 20 }, [['F', 30, 15]]), rank: 'SILVER IV 0 LP' };
+  assert.deepEqual(priorityBans([star, weak]).map((b) => b.champion), ['A', 'B', 'C', 'D', 'E']);
+  const mixed = priorityBans(team).map((b) => b.player);
+  assert.ok(new Set(mixed).size > 1);
+});
+
+test('priority bans weight the same comfort higher on a higher ranked player', () => {
+  const low = { ...player('Low#EUW', { MID: 20 }, [['A', 50, 30]]), rank: 'IRON IV 0 LP' };
+  const high = { ...player('High#EUW', { TOP: 20 }, [['B', 50, 30]]), rank: 'DIAMOND I 0 LP' };
+  assert.deepEqual(priorityBans([low, high], 1).map((b) => b.champion), ['B']);
 });
