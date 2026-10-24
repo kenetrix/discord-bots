@@ -43,7 +43,7 @@ const NEEDED_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits
 async function runAllVoice(client, job) {
   const guild = await client.guilds.fetch(job.guild_id).catch(() => null);
   if (!guild) {
-    log.warn(`#${job.id}: server ${job.guild_id} not found (Jarvis removed from it?).`);
+    log.warn(`Job id ${job.id}: server ${job.guild_id} not found (Jarvis removed from it?).`);
     return null;
   }
   const channels = await guild.channels.fetch();
@@ -66,17 +66,17 @@ async function runAllVoice(client, job) {
       total.skippedOld += result.skippedOld;
       if (result.deleted > 0) touched.push(`${channel} (${result.deleted})`);
     } catch (err) {
-      log.error(`#${job.id} failed in ${who(channel)} on ${who(guild)}`, err);
+      log.error(`Job id ${job.id} failed in ${who(channel)} on ${who(guild)}`, err);
     }
   }
   stmts.touchJob.run(Date.now(), job.id);
   if (skipped.length) {
-    log.warn(`#${job.id}: skipped ${skipped.length} voice channel(s) on ${who(guild)} without View Channel, Read Message History or Manage Messages: ${skipped.join(', ')}`);
+    log.warn(`Job id ${job.id}: skipped ${skipped.length} voice channel(s) on ${who(guild)} without View Channel, Read Message History or Manage Messages: ${skipped.join(', ')}`);
   }
-  log.info(`#${job.id}: deleted ${total.deleted} message(s) in ${touched.length} voice channel(s) on ${who(guild)}${oldNote(total)}.`);
+  log.info(`Job id ${job.id}: deleted ${total.deleted} message(s) in ${touched.length} voice channel(s) on ${who(guild)}${oldNote(total)}.`);
   if (total.deleted > 0) {
     await modlog(guild, {
-      action: `Scheduled cleanup #${job.id}`,
+      action: 'Scheduled cleanup',
       moderator: client.user,
       fields: [
         { name: 'Channels', value: touched.join(', ').slice(0, 1024), inline: true },
@@ -92,17 +92,17 @@ const oldNote = (result) => (result.skippedOld ? `, ${result.skippedOld} old mes
 
 async function runJob(client, job) {
   if (running.has(job.id)) {
-    log.warn(`#${job.id}: previous run has not finished yet, skipped.`);
+    log.warn(`Job id ${job.id}: previous run has not finished yet, skipped.`);
     return null;
   }
   running.add(job.id);
   const started = Date.now();
-  log.info(`#${job.id}: run started.`);
+  log.info(`Job id ${job.id}: run started.`);
   try {
     if (job.channel_id === ALL_VOICE) return await runAllVoice(client, job);
     const channel = await client.channels.fetch(job.channel_id).catch(() => null);
     if (!channel?.isTextBased()) {
-      log.warn(`#${job.id}: channel ${job.channel_id} not found or not a text channel (deleted, or Jarvis may not see it).`);
+      log.warn(`Job id ${job.id}: channel ${job.channel_id} not found or not a text channel (deleted, or Jarvis may not see it).`);
       return null;
     }
     const result = await cleanChannel(channel, {
@@ -111,10 +111,10 @@ async function runJob(client, job) {
       keepLatest: job.keep_latest,
     });
     stmts.touchJob.run(Date.now(), job.id);
-    log.info(`#${job.id}: deleted ${result.deleted} message(s) in ${who(channel)} on ${who(channel.guild)}${oldNote(result)} (${Date.now() - started} ms).`);
+    log.info(`Job id ${job.id}: deleted ${result.deleted} message(s) in ${who(channel)} on ${who(channel.guild)}${oldNote(result)} (${Date.now() - started} ms).`);
     if (result.deleted > 0) {
       await modlog(channel.guild, {
-        action: `Scheduled cleanup #${job.id}`,
+        action: 'Scheduled cleanup',
         moderator: client.user,
         fields: [
           { name: 'Channel', value: `${channel}`, inline: true },
@@ -124,7 +124,7 @@ async function runJob(client, job) {
     }
     return result;
   } catch (err) {
-    log.error(`#${job.id} failed after ${Date.now() - started} ms`, err);
+    log.error(`Job id ${job.id} failed after ${Date.now() - started} ms`, err);
     return null;
   } finally {
     running.delete(job.id);
@@ -138,14 +138,14 @@ function scheduleJob(client, job) {
   const next = task.getNextRun?.();
   const guild = who(client.guilds.cache.get(job.guild_id) ?? { id: job.guild_id });
   const channel = job.channel_id === ALL_VOICE ? 'all voice channels' : who(client.channels.cache.get(job.channel_id) ?? { id: job.channel_id });
-  log.info(`#${job.id}: "${job.cron}" in ${channel} on ${guild}, next run ${next ? timestamp(next) : 'unknown'}.`);
+  log.info(`Job id ${job.id}: "${job.cron}" in ${channel} on ${guild}, next run ${next ? timestamp(next) : 'unknown'}.`);
 }
 
 function unscheduleJob(id) {
   if (!tasks.has(id)) return;
   tasks.get(id).stop();
   tasks.delete(id);
-  log.info(`#${id}: unscheduled.`);
+  log.info(`Job id ${id}: unscheduled.`);
 }
 
 function startScheduler(client) {
