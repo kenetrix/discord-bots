@@ -165,7 +165,7 @@ function bansView(report) {
   const embed = new EmbedBuilder()
     .setTitle(`🚫 Bans · ${report.region}`)
     .setColor(COLOR)
-    .setDescription('Champions the enemies play most and win most with, at most three aimed at one player.')
+    .setDescription('At least one ban per enemy, then the champions they play most and win most with, at most three aimed at one player.')
     .addFields({ name: 'Ban', value: report.bans.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' });
   if (report.alternatives.length) embed.addFields({ name: 'Backup', value: report.alternatives.map(line).join('\n') });
   if (report.plan.length) embed.addFields({ name: 'Tips', value: report.plan.map((t) => `• ${t}`).join('\n') });

@@ -125,3 +125,23 @@ test('threat levels follow the rank, a strong main lifts it', () => {
   assert.equal(at('GOLD IV 0 LP').level, 'low');
   assert.equal(at(null).ranked, false);
 });
+
+test('every player gets at least one ban, even a low-threat one', () => {
+  const { bans } = recommendBans(team);
+  assert.deepEqual(new Set(bans.map((b) => b.player)), new Set(team.map((p) => p.riotId)));
+  const twoTricks = [
+    player('A#EUW', { MID: 20 }, [['X', 100, 70], ['Y', 90, 60], ['Z', 80, 55]]),
+    player('B#EUW', { TOP: 20 }, [['W', 5, 2]]),
+  ];
+  const { bans: few, alternatives } = recommendBans(twoTricks);
+  assert.ok(few.some((b) => b.champion === 'W'));
+  assert.equal(few.filter((b) => b.player === 'A#EUW').length, 3);
+  assert.equal(few.length + alternatives.length, 4);
+});
+
+test('a champion two players share is banned once and the second player gets their next one', () => {
+  const both = [player('A#EUW', { MID: 20 }, [['Ahri', 100, 60]]), player('B#EUW', { ADC: 20 }, [['Ahri', 90, 55], ['Jinx', 20, 10]])];
+  const { bans } = recommendBans(both);
+  assert.equal(bans.filter((b) => b.champion === 'Ahri').length, 1);
+  assert.ok(bans.some((b) => b.player === 'B#EUW'));
+});

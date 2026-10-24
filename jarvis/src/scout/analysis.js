@@ -38,23 +38,33 @@ function rankThreats(players) {
 }
 
 /**
- * Picks the bans: the most dangerous champions, at most MAX_BANS_PER_PLAYER aimed at one player,
- * plus the next best candidates as alternatives.
+ * Picks the bans: first each player's most dangerous champion, so every lane gets at least one ban
+ * (while there are bans left), then the most dangerous of the rest with at most MAX_BANS_PER_PLAYER
+ * aimed at one player, plus the next best candidates as alternatives. Bans are sorted by threat.
  */
 function recommendBans(players, { count = 5, alternatives = 3 } = {}) {
+  const threats = rankThreats(players);
   const picked = [];
   const perPlayer = new Map();
   const seen = new Set();
-  for (const t of rankThreats(players)) {
-    if (seen.has(t.champion)) continue;
-    const aimed = perPlayer.get(t.player) ?? 0;
-    if (picked.length < count && aimed >= MAX_BANS_PER_PLAYER) continue;
+  const take = (t) => {
     seen.add(t.champion);
-    perPlayer.set(t.player, aimed + 1);
+    perPlayer.set(t.player, (perPlayer.get(t.player) ?? 0) + 1);
     picked.push(t);
-    if (picked.length >= count + alternatives) break;
+  };
+  // Most dangerous players first, in case there are more players than bans.
+  for (const t of threats) {
+    if (picked.length >= count) break;
+    if (!perPlayer.has(t.player) && !seen.has(t.champion)) take(t);
   }
-  return { bans: picked.slice(0, count), alternatives: picked.slice(count) };
+  for (const t of threats) {
+    if (picked.length >= count + alternatives) break;
+    if (seen.has(t.champion)) continue;
+    if (picked.length < count && (perPlayer.get(t.player) ?? 0) >= MAX_BANS_PER_PLAYER) continue;
+    take(t);
+  }
+  const bans = picked.slice(0, count).sort((x, y) => y.score - x.score);
+  return { bans, alternatives: picked.slice(count) };
 }
 
 /** Assigns each player the role they play most, so that every role is taken at most once. */
