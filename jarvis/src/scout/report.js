@@ -124,7 +124,7 @@ function priorityByLane(report) {
 /** The message for the whole team: missing players, then per lane the bans and our counter pick. Everything else is behind the buttons. */
 function overview(report, options) {
   const total = report.priority.length
-    ? `**Priority bans** (per lane, strongest first)\n${priorityByLane(report).map((l) => `**${ROLE_LABEL[l.role]}:** ${l.bans.map((b) => `${b.champion} (${escapeMarkdown(b.player.split('#')[0])})`).join(' · ')}`).join('\n')}`
+    ? `🔥 **Priority bans** (per lane, strongest first)\n${priorityByLane(report).map((l) => `**${ROLE_LABEL[l.role]}:** ${l.bans.map((b) => b.champion).join(' · ')}`).join('\n')}`
     : 'Not enough data for bans.';
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
