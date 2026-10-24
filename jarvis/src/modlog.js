@@ -1,14 +1,9 @@
-const { EmbedBuilder, PermissionFlagsBits, PermissionsBitField } = require('discord.js');
+const { EmbedBuilder } = require('discord.js');
 const { stmts } = require('./db');
+const { missingPermissions } = require('./util');
 const { logger, who } = require('./log');
 
 const log = logger('modlog');
-const NEEDED = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
-
-/** "View Channel, Send Messages" from permission flags. */
-function permissionNames(flags) {
-  return new PermissionsBitField(flags).toArray().map((name) => name.replace(/([a-z])([A-Z])/g, '$1 $2')).join(', ');
-}
 
 /**
  * Posts an entry to the server's mod log channel, if one is set.
@@ -29,10 +24,10 @@ async function modlog(guild, { action, target, moderator, reason, color = 0x5865
     log.warn(`Mod log channel ${who(channel)} in ${who(guild)} is not a text channel. Set a new one with /config.`);
     return;
   }
-  const missing = channel.permissionsFor(guild.members.me)?.missing(NEEDED) ?? NEEDED;
-  if (missing.length) {
+  const missing = missingPermissions(channel);
+  if (missing) {
     log.warn(
-      `Cannot post "${action}" in mod log channel ${who(channel)} on ${who(guild)}: Jarvis is missing ${permissionNames(missing)} there. ` +
+      `Cannot post "${action}" in mod log channel ${who(channel)} on ${who(guild)}: Jarvis is missing ${missing} there. ` +
         'Allow it in the channel settings (Permissions) for the Jarvis role, or pick another channel with /config.',
     );
     return;

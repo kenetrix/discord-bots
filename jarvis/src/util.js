@@ -1,4 +1,7 @@
-const { MessageFlags } = require('discord.js');
+const { MessageFlags, PermissionFlagsBits, PermissionsBitField } = require('discord.js');
+
+/** What the bot needs to post log embeds in a channel. */
+const POST_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.SendMessages, PermissionFlagsBits.EmbedLinks];
 
 /** Replies visibly only to the user who ran the command. */
 function ephemeral(interaction, content) {
@@ -47,4 +50,11 @@ function parseDuration(input) {
   return Number(match[1]) * unit;
 }
 
-module.exports = { ephemeral, checkHierarchy, checkRole, parseDuration };
+/** The permissions the bot lacks in a channel, as readable names ("View Channel, Send Messages"); empty if none. */
+function missingPermissions(channel, permissions = POST_PERMISSIONS) {
+  const have = channel.permissionsFor(channel.guild.members.me);
+  const missing = have ? have.missing(permissions) : new PermissionsBitField(permissions).toArray();
+  return missing.map((name) => name.replace(/([a-z])([A-Z])/g, '$1 $2')).join(', ');
+}
+
+module.exports = { POST_PERMISSIONS, missingPermissions, ephemeral, checkHierarchy, checkRole, parseDuration };

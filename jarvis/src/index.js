@@ -66,7 +66,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       for (const command of commands) {
         if (command.handleButton && (await command.handleButton(interaction))) break;
       }
-    } else if (interaction.isChannelSelectMenu()) {
+    } else if (interaction.isAnySelectMenu()) {
       log.debug(`Select ${what} by ${who(interaction.user)} ${where}`);
       for (const command of commands) {
         if (command.handleSelect && (await command.handleSelect(interaction))) break;

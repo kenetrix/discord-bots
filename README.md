@@ -55,7 +55,7 @@ All commands are slash commands; Discord's default permissions decide who sees t
 
 | Command | What it does | Permission |
 | --- | --- | --- |
-| `/config` | Settings panel, e.g. the moderation log channel | Manage Server |
+| `/config` | Settings panel, e.g. the moderation log channel (only channels Jarvis can post in are offered; the others are listed with the permissions it needs) | Manage Server |
 | `/role add\|remove` | Give or take a role | Manage Roles |
 | `/rolepanel` | Panel with up to 10 buttons for self-service roles | Manage Roles |
 | `/ban add\|remove` | Ban (optionally deleting the last 7 days of messages) or unban | Ban Members |
