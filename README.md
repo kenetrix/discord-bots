@@ -88,7 +88,7 @@ botctl update-all
 botctl list
 ```
 
-Each bot lives in `/opt/bots/<name>/`, runs as user `bots` in the OpenRC service `bot.<name>` and starts after a reboot. Any repo with a `package.json` and a `start` script works; an optional `deploy-commands` script runs on `start` and `update`.
+Each bot lives in `/opt/bots/<name>/`, which holds only the bot's own files (the `--path` subfolder of the repo), its `.env`, `data/` and `node_modules/`. No copy of the repository is kept: `add` and `update` download only that subfolder into a temporary folder, copy its files over and delete the download. Files git does not track are never touched. Where a bot comes from (URL, branch, subfolder, version) and which files `botctl` put in place is stored in the info file `/opt/bots/<name>/.botctl` (readable by root only). Bots installed with an older `botctl`, where `/opt/bots/<name>/` held the whole repository, are cleaned up by the next `botctl update` (or `update-all`), keeping `.env`, `data/` and every other untracked file. Each bot runs as user `bots` in the OpenRC service `bot.<name>` and starts after a reboot. Any repo with a `package.json` and a `start` script works; an optional `deploy-commands` script runs on `start` and `update`.
 
 **Updating:** on a Proxmox container run `update` inside it: it refreshes `botctl` and the web interface, updates all bots and the Alpine packages. On any machine, `botctl self-update` (or running the installer again) refreshes `botctl` and the web interface, and `botctl update-all` updates the bots.
 

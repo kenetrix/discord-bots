@@ -3,6 +3,9 @@
 set -Eeuo pipefail
 
 BOTS_DIR=/opt/bots
+# Each bot folder has an info file: where the bot comes from and which files botctl put in place.
+# No repository is kept on the machine: /opt/bots/<name>/ only holds the bot's own files.
+INFO_FILE=.botctl
 BOT_USER=bots
 
 die() { echo "Error: $*" >&2; exit 1; }
@@ -12,6 +15,96 @@ check_name() { [[ "${1:-}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "Invalid bot name '
 exists() { [[ -d "$BOTS_DIR/$1" && -f "/etc/init.d/bot.$1" ]] || die "Bot '$1' does not exist. 'botctl list' shows all bots."; }
 app_dir() { sed -n 's/^directory="\(.*\)"$/\1/p' "/etc/init.d/bot.$1"; }
 is_active() { rc-service "bot.$1" status >/dev/null 2>&1; }
+
+check_sub() {
+  [[ -z "$1" || ( "$1" =~ ^[A-Za-z0-9._/-]+$ && ! "$1" =~ (^|/)\.\.(/|$) ) ]] || die "Invalid subfolder '$1'."
+}
+
+info_get() { sed -n "s/^$2=//p" "$BOTS_DIR/$1/$INFO_FILE" 2>/dev/null; }
+
+# write_info <name> <url> <branch> <subfolder> <commit>, plus the files of the last deploy.
+# Owned by root and only readable by root, the URL may contain a token.
+write_info() {
+  local file="$BOTS_DIR/$1/$INFO_FILE" rel
+  (
+    umask 077
+    printf 'url=%s\nbranch=%s\npath=%s\ncommit=%s\n' "$2" "$3" "$4" "$5"
+    while IFS= read -r rel; do [[ -z "$rel" ]] || printf 'file=%s\n' "$rel"; done <<<"$DEPLOYED"
+  ) >"$file.new"
+  chown root:root "$file.new"
+  chmod 0600 "$file.new"
+  mv "$file.new" "$file"
+}
+
+# Temporary folders of this run, deleted when botctl exits.
+TMP_DIRS=()
+cleanup() { [[ ${#TMP_DIRS[@]} -eq 0 ]] || rm -rf "${TMP_DIRS[@]}"; }
+trap cleanup EXIT
+
+# fetch_bot <folder> <url> <branch> <subfolder>: shallow, sparse clone of only the subfolder into <folder>/repo.
+fetch_bot() {
+  local tmp="$1" url="$2" branch="$3" sub="$4"
+  chown "$BOT_USER:$BOT_USER" "$tmp"
+  echo "Downloading ${url//\/\/*@/\/\/***@}${sub:+ ($sub)} …"
+  as_bot git clone --quiet --depth 1 --filter=blob:none ${sub:+--sparse} ${branch:+--branch "$branch"} "$url" "$tmp/repo" ||
+    die "Download failed."
+  [[ -z "$sub" ]] || as_bot git -C "$tmp/repo" sparse-checkout set -- "$sub" || die "Download failed."
+}
+
+# deploy <name> <clone> <subfolder>: copies the subfolder's tracked files to /opt/bots/<name>/. Files git
+# does not track (.env, data/, node_modules/ …) are never touched; files removed upstream are deleted.
+deploy() {
+  local name="$1" repo="$2" sub="$3" root="$BOTS_DIR/$1" src new rel dir
+  src="$repo${sub:+/$sub}"
+  [[ -f "$src/package.json" ]] || die "No package.json in ${sub:-the repository root}."
+  new=$(as_bot git -C "$repo" -c core.quotePath=false ls-files -- ${sub:+"$sub/"} | sed "s|^${sub:+$sub/}||")
+  mkdir -p "$root"
+  while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
+    mkdir -p "$root/$(dirname "$rel")"
+    rm -f "$root/$rel"
+    cp -pP "$src/$rel" "$root/$rel"
+  done <<<"$new"
+  while IFS= read -r rel; do
+    [[ -n "$rel" && "$rel" != "$INFO_FILE" ]] && ! grep -qxF -- "$rel" <<<"$new" || continue
+    rm -f "$root/$rel"
+    dir=$(dirname "$rel")
+    while [[ "$dir" != "." ]] && rmdir "$root/$dir" 2>/dev/null; do dir=$(dirname "$dir"); done
+  done < <(info_get "$name" file)
+  DEPLOYED="$new"
+  chown -R "$BOT_USER:$BOT_USER" "$root"
+  chmod 0750 "$root"
+}
+
+# Bots installed by an older botctl had the whole repository in /opt/bots/<name>/ and the bot in a
+# subfolder of it. Keeps every untracked file of the bot (.env, data/ …) and drops the rest.
+migrate_legacy() {
+  local name="$1" root="$BOTS_DIR/$1" dir sub url branch tmp backup p rel
+  dir=$(app_dir "$name")
+  sub=""; [[ "$dir" == "$root" ]] || sub="${dir#"$root"/}"
+  url=$(as_bot git -C "$root" remote get-url origin)
+  branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
+  echo "$name: removing the repository from $root …"
+  tmp=$(mktemp -d); TMP_DIRS+=("$tmp")
+  fetch_bot "$tmp" "$url" "$branch" "$sub"
+  rc-service "bot.$name" stop >/dev/null 2>&1 || true
+  # Outside the temporary folder, so nothing of the bot is lost if a later step fails.
+  backup="$BOTS_DIR/.$name.old"
+  rm -rf "$backup"
+  mv "$root" "$backup"
+  mkdir -p "$root"
+  # node_modules/ is installed again.
+  while IFS= read -r p; do
+    p="${p%/}"; rel="${p#"${sub:+$sub/}"}"
+    [[ -n "$rel" && "$rel" != node_modules && ! -e "$root/$rel" ]] || continue
+    mkdir -p "$root/$(dirname "$rel")"
+    mv "$backup/$p" "$root/$rel"
+  done < <(as_bot git -C "$backup" -c core.quotePath=false ls-files --others --directory -- "${sub:-.}")
+  sed -i "s|^directory=.*|directory=\"$root\"|" "/etc/init.d/bot.$name"
+  deploy "$name" "$tmp/repo" "$sub"
+  write_info "$name" "$url" "$branch" "$sub" "$(as_bot git -C "$tmp/repo" rev-parse --short HEAD)"
+  rm -rf "$backup"
+}
 
 install_deps() {
   local dir="$1"
@@ -43,6 +136,7 @@ Usage: botctl <command> [arguments]
   stop <name>        Stop the bot
   restart <name>     Restart the bot
   update <name>      Pull the latest version, install dependencies, restart
+                     (also removes the repository left in the bot folder by older versions)
   update-all         Update every installed bot
   set <name> <KEY>   Set KEY in the bot's .env to the value read from stdin
   logs <name>        Show the live log (Ctrl+C to quit)
@@ -71,14 +165,18 @@ cmd_add() {
   [[ -n "$url" ]] || die "Git URL is missing."
   [[ -e "$BOTS_DIR/$name" ]] && die "Bot '$name' already exists."
 
-  local root="$BOTS_DIR/$name"
+  check_sub "${sub#/}"
+  sub="${sub#/}"; sub="${sub%/}"
+
+  local dir="$BOTS_DIR/$name"
   # A failed add must not leave a half-installed bot behind.
   ADD_OK=0 ADD_NAME="$name"
-  trap 'if [[ $ADD_OK -ne 1 ]]; then rm -rf "$BOTS_DIR/$ADD_NAME" "/etc/init.d/bot.$ADD_NAME"; fi' EXIT
-  echo "Cloning ${url//\/\/*@/\/\/***@} …"
-  as_bot git clone --quiet --depth 1 ${branch:+--branch "$branch"} "$url" "$root"
-  local dir="$root${sub:+/${sub#/}}"
-  [[ -f "$dir/package.json" ]] || { rm -rf "$root"; die "No package.json in $dir."; }
+  ADD_TMP=$(mktemp -d); TMP_DIRS+=("$ADD_TMP")
+  trap 'cleanup; if [[ $ADD_OK -ne 1 ]]; then rm -rf "$BOTS_DIR/$ADD_NAME" "/etc/init.d/bot.$ADD_NAME"; fi' EXIT
+  fetch_bot "$ADD_TMP" "$url" "$branch" "$sub"
+  deploy "$name" "$ADD_TMP/repo" "$sub"
+  write_info "$name" "$url" "${branch:-$(as_bot git -C "$ADD_TMP/repo" rev-parse --abbrev-ref HEAD)}" "$sub" \
+    "$(as_bot git -C "$ADD_TMP/repo" rev-parse --short HEAD)"
 
   echo "Installing dependencies …"
   install_deps "$dir"
@@ -137,14 +235,22 @@ cmd_start() { exists "$1"; register_commands "$1"; rc-service "bot.$1" start; ec
 
 cmd_update() {
   need_root; exists "$1"
-  local root="$BOTS_DIR/$1" dir; dir=$(app_dir "$1")
+  local root="$BOTS_DIR/$1" before after url branch sub tmp
   local was_active=0; is_active "$1" && was_active=1
-  local branch; branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
-  local before; before=$(as_bot git -C "$root" rev-parse --short HEAD)
-  as_bot git -C "$root" fetch --quiet --depth 1 origin "$branch"
-  as_bot git -C "$root" reset --quiet --hard FETCH_HEAD
-  local after; after=$(as_bot git -C "$root" rev-parse --short HEAD)
+  if [[ -d "$root/.git" ]]; then
+    before=$(as_bot git -C "$root" rev-parse --short HEAD)
+    migrate_legacy "$1"
+  else
+    [[ -f "$root/$INFO_FILE" ]] || die "No $root/$INFO_FILE, so the source of '$1' is unknown. Remove the bot and add it again."
+    url=$(info_get "$1" url); branch=$(info_get "$1" branch); sub=$(info_get "$1" path); before=$(info_get "$1" commit)
+    tmp=$(mktemp -d); TMP_DIRS+=("$tmp")
+    fetch_bot "$tmp" "$url" "$branch" "$sub"
+    deploy "$1" "$tmp/repo" "$sub"
+    write_info "$1" "$url" "$branch" "$sub" "$(as_bot git -C "$tmp/repo" rev-parse --short HEAD)"
+  fi
+  after=$(info_get "$1" commit)
   echo "$1: $before → $after"
+  local dir; dir=$(app_dir "$1")
   install_deps "$dir"
   register_commands "$1"
   if [[ $was_active -eq 1 ]]; then
@@ -197,7 +303,8 @@ cmd_list() {
   for root in "$BOTS_DIR"/*/; do
     local name; name=$(basename "$root")
     local state=stopped; is_active "$name" && state=started
-    local rev; rev=$(as_bot git -C "$root" rev-parse --short HEAD 2>/dev/null || echo "-")
+    local rev; rev=$(info_get "$name" commit)
+    [[ -n "$rev" ]] || rev=$(as_bot git -C "$root" rev-parse --short HEAD 2>/dev/null || echo "-")
     printf '%-20s %-10s %-9s %s\n' "$name" "$state" "$rev" "$(app_dir "$name")"
   done
 }
