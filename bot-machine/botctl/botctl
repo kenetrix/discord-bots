@@ -76,36 +76,6 @@ deploy() {
   chmod 0750 "$root"
 }
 
-# Bots installed by an older botctl had the whole repository in /opt/bots/<name>/ and the bot in a
-# subfolder of it. Keeps every untracked file of the bot (.env, data/ …) and drops the rest.
-migrate_legacy() {
-  local name="$1" root="$BOTS_DIR/$1" dir sub url branch tmp backup p rel
-  dir=$(app_dir "$name")
-  sub=""; [[ "$dir" == "$root" ]] || sub="${dir#"$root"/}"
-  url=$(as_bot git -C "$root" remote get-url origin)
-  branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
-  echo "$name: removing the repository from $root …"
-  tmp=$(mktemp -d); TMP_DIRS+=("$tmp")
-  fetch_bot "$tmp" "$url" "$branch" "$sub"
-  rc-service "bot.$name" stop >/dev/null 2>&1 || true
-  # Outside the temporary folder, so nothing of the bot is lost if a later step fails.
-  backup="$BOTS_DIR/.$name.old"
-  rm -rf "$backup"
-  mv "$root" "$backup"
-  mkdir -p "$root"
-  # node_modules/ is installed again.
-  while IFS= read -r p; do
-    p="${p%/}"; rel="${p#"${sub:+$sub/}"}"
-    [[ -n "$rel" && "$rel" != node_modules && ! -e "$root/$rel" ]] || continue
-    mkdir -p "$root/$(dirname "$rel")"
-    mv "$backup/$p" "$root/$rel"
-  done < <(as_bot git -C "$backup" -c core.quotePath=false ls-files --others --directory -- "${sub:-.}")
-  sed -i "s|^directory=.*|directory=\"$root\"|" "/etc/init.d/bot.$name"
-  deploy "$name" "$tmp/repo" "$sub"
-  write_info "$name" "$url" "$branch" "$sub" "$(as_bot git -C "$tmp/repo" rev-parse --short HEAD)"
-  rm -rf "$backup"
-}
-
 install_deps() {
   local dir="$1"
   # npm would run "node-gyp rebuild" for better-sqlite3 (needs a compiler); its prebuilt binary is used instead.
@@ -136,7 +106,6 @@ Usage: botctl <command> [arguments]
   stop <name>        Stop the bot
   restart <name>     Restart the bot
   update <name>      Pull the latest version, install dependencies, restart
-                     (also removes the repository left in the bot folder by older versions)
   update-all         Update every installed bot
   set <name> <KEY>   Set KEY in the bot's .env to the value read from stdin
   logs <name>        Show the live log (Ctrl+C to quit)
@@ -237,17 +206,12 @@ cmd_update() {
   need_root; exists "$1"
   local root="$BOTS_DIR/$1" before after url branch sub tmp
   local was_active=0; is_active "$1" && was_active=1
-  if [[ -d "$root/.git" ]]; then
-    before=$(as_bot git -C "$root" rev-parse --short HEAD)
-    migrate_legacy "$1"
-  else
-    [[ -f "$root/$INFO_FILE" ]] || die "No $root/$INFO_FILE, so the source of '$1' is unknown. Remove the bot and add it again."
-    url=$(info_get "$1" url); branch=$(info_get "$1" branch); sub=$(info_get "$1" path); before=$(info_get "$1" commit)
-    tmp=$(mktemp -d); TMP_DIRS+=("$tmp")
-    fetch_bot "$tmp" "$url" "$branch" "$sub"
-    deploy "$1" "$tmp/repo" "$sub"
-    write_info "$1" "$url" "$branch" "$sub" "$(as_bot git -C "$tmp/repo" rev-parse --short HEAD)"
-  fi
+  [[ -f "$root/$INFO_FILE" ]] || die "No $root/$INFO_FILE, so the source of '$1' is unknown. Remove the bot and add it again."
+  url=$(info_get "$1" url); branch=$(info_get "$1" branch); sub=$(info_get "$1" path); before=$(info_get "$1" commit)
+  tmp=$(mktemp -d); TMP_DIRS+=("$tmp")
+  fetch_bot "$tmp" "$url" "$branch" "$sub"
+  deploy "$1" "$tmp/repo" "$sub"
+  write_info "$1" "$url" "$branch" "$sub" "$(as_bot git -C "$tmp/repo" rev-parse --short HEAD)"
   after=$(info_get "$1" commit)
   echo "$1: $before → $after"
   local dir; dir=$(app_dir "$1")
@@ -304,8 +268,7 @@ cmd_list() {
     local name; name=$(basename "$root")
     local state=stopped; is_active "$name" && state=started
     local rev; rev=$(info_get "$name" commit)
-    [[ -n "$rev" ]] || rev=$(as_bot git -C "$root" rev-parse --short HEAD 2>/dev/null || echo "-")
-    printf '%-20s %-10s %-9s %s\n' "$name" "$state" "$rev" "$(app_dir "$name")"
+    printf '%-20s %-10s %-9s %s\n' "$name" "$state" "${rev:--}" "$(app_dir "$name")"
   done
 }
 
