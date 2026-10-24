@@ -68,7 +68,7 @@ All commands are slash commands; Discord's default permissions decide who sees t
 
 **`/cleaner`** runs jobs on a schedule: `hourly`, `daily` (04:00), `weekly` (Mondays, 04:00) or a cron expression like `30 3 * * *`. `add-voice` covers the chats of all voice channels of the server. Options: `older_than_hours`, `keep_latest` and `keep_pinned`. Messages older than 14 days are deleted one by one, up to 300 per run.
 
-**`/scout`** takes up to five Riot IDs (`Name#TAG`, tag optional) in the options `player`, `summoner`, `enemy`, `opponent` and `rival`, in any order, plus an optional `region` (default `EUW`, or `SCOUT_REGION`). Jarvis looks the players up on [OP.GG](https://op.gg) through its public [MCP server](https://github.com/opgginc/opgg-mcp) (no API key) and posts ban and counter-pick advice per lane into the text chat of your voice channel, or into the current channel. Buttons under the report show player and ban details only to the person who clicks.
+**`/scout`** takes up to five Riot IDs (`Name#TAG`, tag optional) in the options `summoner1` to `summoner5`, in any order, plus an optional `region` (default `EUW`, or `SCOUT_REGION`). Jarvis looks the players up on [OP.GG](https://op.gg) through its public [MCP server](https://github.com/opgginc/opgg-mcp) (no API key) and posts ban and counter-pick advice per lane into the text chat of your voice channel, or into the current channel. Buttons under the report show player and ban details only to the person who clicks.
 
 - A name without tag is tried with the region's default tag, then with OP.GG's name search (unofficial, may break); Jarvis tells you which account it picked.
 - Roles come from each player's recent games, not from the input order.

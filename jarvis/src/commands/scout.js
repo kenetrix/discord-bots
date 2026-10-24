@@ -8,8 +8,8 @@ const { logger, who } = require('../log');
 
 const log = logger('scout');
 
-// Distinct names without numbers, because the order of the enemies does not matter (Discord needs unique names).
-const PLAYER_OPTIONS = ['player', 'summoner', 'enemy', 'opponent', 'rival'];
+// Numbered only because Discord needs unique names; the order of the enemies does not matter.
+const PLAYER_OPTIONS = ['summoner1', 'summoner2', 'summoner3', 'summoner4', 'summoner5'];
 const DEFAULT_REGION = (process.env.SCOUT_REGION || 'EUW').toUpperCase();
 const COOLDOWN_MS = 60e3; // per user, so one person cannot flood OP.GG
 const lastScout = new Map(); // user id -> time of their last scout
