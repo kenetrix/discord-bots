@@ -1,6 +1,7 @@
 // Fetches scouting data from OP.GG and maps it to the shapes used in analysis.js.
 const { OpggError, callTool } = require('./mcp');
 const { TtlCache } = require('./cache');
+const { searchPlayers } = require('./search');
 
 // A player's data hardly changes during one Clash day; matchup stats change with the patch.
 const playerCache = new TtlCache(30 * 60e3);
@@ -26,7 +27,7 @@ function parseRiotId(input) {
   return match ? { gameName: match[1], tagLine: match[2] ?? null } : null;
 }
 
-// Tags Riot gives new accounts per region. OP.GG has no name search, so a name without tag is tried with these.
+// Tags Riot gives new accounts per region. A name without tag is tried with these before the name search.
 const DEFAULT_TAGS = {
   EUW: ['EUW'],
   EUNE: ['EUNE'],
@@ -44,6 +45,9 @@ const DEFAULT_TAGS = {
   TW: ['TW2'],
   VN: ['VN2'],
 };
+
+// Accounts from the name search that are looked up on OP.GG before giving up on the search.
+const MAX_SEARCH_TRIES = 3;
 
 function defaultTags(region) {
   return [...new Set([...(DEFAULT_TAGS[region] ?? []), region, `${region}1`])].slice(0, 3);
@@ -114,8 +118,10 @@ function normalizeRoles(games) {
 }
 
 /**
- * Rank, role stats and champion pool of one player, cached for 30 minutes. Takes Name#TAG or a bare name,
- * which is tried with the region's default tags. Throws an OpggError when OP.GG does not know the player.
+ * Rank, role stats and champion pool of one player, cached for 30 minutes. Takes Name#TAG or a bare name, which
+ * is tried with the region's default tags and else looked up with OP.GG's name search. A player found by the
+ * search has `foundBy: 'search'`; with several accounts of that name it is the best guess, with the tags of the
+ * others in `namesakes` and `guessedTag` set. Throws an OpggError when OP.GG does not know the player.
  */
 async function getPlayer(riotId, region) {
   const id = parseRiotId(riotId);
@@ -123,10 +129,28 @@ async function getPlayer(riotId, region) {
   if (id.tagLine) return getTaggedPlayer(id, region);
 
   // No tag: try the region's default tags one after another and take the first account that exists.
-  const tried = defaultTags(region);
-  for (const tagLine of tried) {
+  const tried = [];
+  for (const tagLine of defaultTags(region)) {
+    tried.push(tagLine);
     try {
       return { ...(await getTaggedPlayer({ gameName: id.gameName, tagLine }, region)), guessedTag: true };
+    } catch (err) {
+      if (err.kind !== 'not_found') throw err;
+    }
+  }
+
+  // Then OP.GG's name search, which knows custom tags; it is unofficial, so a failure only means not found.
+  const found = await searchPlayers(id.gameName, region).catch((err) => {
+    console.warn(`OP.GG name search for ${id.gameName} failed:`, err.message);
+    return [];
+  });
+  const fresh = found.filter((a) => !tried.some((t) => t.toLowerCase() === a.tagLine.toLowerCase()));
+  for (const account of fresh.slice(0, MAX_SEARCH_TRIES)) {
+    tried.push(account.tagLine);
+    try {
+      const player = await getTaggedPlayer(account, region);
+      const namesakes = fresh.filter((a) => a !== account).map((a) => a.tagLine);
+      return { ...player, foundBy: 'search', guessedTag: namesakes.length > 0, namesakes };
     } catch (err) {
       if (err.kind !== 'not_found') throw err;
     }

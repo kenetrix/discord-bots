@@ -2,7 +2,7 @@ const { randomUUID } = require('node:crypto');
 const { SlashCommandBuilder, MessageFlags, PermissionFlagsBits } = require('discord.js');
 const { REGIONS, parseRiotId, getPlayer, getCounters, getRolePools, getChampionTags } = require('../scout/opgg');
 const { recommendBans, priorityBans, predictPicks, playerThreats, suggestComp, suggestFlexCounters, gamePlan } = require('../scout/analysis');
-const { buildReport, overview, render, parseButton } = require('../scout/report');
+const { buildReport, overview, render, parseButton, namesakeCount } = require('../scout/report');
 const { TtlCache } = require('../scout/cache');
 
 const PLAYER_OPTIONS = ['player1', 'player2', 'player3', 'player4', 'player5'];
@@ -13,12 +13,20 @@ const running = new Set(); // guild ids with a scout in progress
 
 /** What went wrong for one player, in words a user can act on. */
 function failureReason(err, region) {
-  if (err.triedTags) return `no player with this name and tag ${err.triedTags.map((t) => `#${t}`).join(', ')} in ${region}. Add the tag (Name#TAG).`;
+  if (err.triedTags) return `no player with this name in ${region} (tried ${err.triedTags.map((t) => `#${t}`).join(', ')}). Add the tag (Name#TAG).`;
   if (err.kind === 'not_found') return `not found on OP.GG (${region}). Check the name, the tag and the region.`;
   if (err.kind === 'rate_limited') return 'OP.GG is limiting requests right now.';
   if (err.kind === 'unavailable') return 'OP.GG did not answer.';
   console.warn('Scout lookup failed:', err.message);
   return 'OP.GG could not look this player up.';
+}
+
+/** Players found by OP.GG's name search, so the caller can check which account was picked. */
+function pickedByName(players) {
+  const picked = players.filter((p) => p.foundBy === 'search');
+  if (!picked.length) return '';
+  const lines = picked.map((p) => `• ${p.riotId}${p.namesakes.length ? `, out of ${namesakeCount(p)} players with this name` : ', the only player with this name'}`);
+  return `\nℹ️ Found by name search (active, highest rank first):\n${lines.join('\n')}\nWrong one? Scout again with Name#TAG.`;
 }
 
 /** The reply when nobody could be scouted: one cause for all players if they share it, else the list. */
@@ -65,7 +73,7 @@ async function scout(interaction, ids, region) {
 
   const where = voice && !canPost ? ` I may not write in ${voice}, so I posted it here.` : '';
   const missing = failed.length ? `\n⚠️ Not scouted:\n${failed.map((f) => `• ${f}`).join('\n')}` : '';
-  return interaction.editReply(`Posted the report in ${target}.${where}${missing}`);
+  return interaction.editReply(`Posted the report in ${target}.${where}${missing}${pickedByName(players)}`);
 }
 
 module.exports = {
