@@ -38,7 +38,7 @@ function logChannels(guild) {
 /** Cleaner jobs with their settings, cut to fit into one embed field. */
 function jobList(jobs) {
   if (!jobs.length) return 'None (create them with /cleaner)';
-  const lines = jobs.map((j) => `**#${j.id}** · ${describeJob(j)}`);
+  const lines = jobs.map((j, i) => `**${i + 1}** · ${describeJob(j)}`);
   const footer = `\nManage them with /cleaner (time zone ${timezone}).`;
   let text = '';
   for (const [i, line] of lines.entries()) {
