@@ -8,7 +8,8 @@ const { logger, who } = require('../log');
 
 const log = logger('scout');
 
-const PLAYER_OPTIONS = ['player1', 'player2', 'player3', 'player4', 'player5'];
+// Numbered only because Discord needs unique names; the order of the enemies does not matter.
+const PLAYER_OPTIONS = ['summoner1', 'summoner2', 'summoner3', 'summoner4', 'summoner5'];
 const DEFAULT_REGION = (process.env.SCOUT_REGION || 'EUW').toUpperCase();
 const COOLDOWN_MS = 60e3; // per user, so one person cannot flood OP.GG
 const lastScout = new Map(); // user id -> time of their last scout
@@ -103,7 +104,9 @@ module.exports = {
       .setDescription('Scout a Clash enemy team and post ban and pick advice in your voice channel')
       .setDMPermission(false);
     PLAYER_OPTIONS.forEach((name, i) =>
-      builder.addStringOption((o) => o.setName(name).setDescription(`Riot ID of enemy ${i + 1}, e.g. Name#EUW (tag optional)`).setRequired(i === 0).setMaxLength(30)),
+      builder.addStringOption((o) =>
+        o.setName(name).setDescription('Riot ID of an enemy, any order, e.g. Name#EUW (tag optional)').setRequired(i === 0).setMaxLength(30),
+      ),
     );
     builder.addStringOption((o) =>
       o
@@ -115,7 +118,13 @@ module.exports = {
   })(),
 
   async execute(interaction) {
-    const ids = PLAYER_OPTIONS.map((name) => interaction.options.getString(name)).filter(Boolean);
+    // Same player twice counts once, and sorting makes the result independent of which field got which name.
+    const unique = new Map();
+    for (const id of PLAYER_OPTIONS.map((name) => interaction.options.getString(name)?.trim()).filter(Boolean)) {
+      const key = id.toLowerCase().replace(/\s*#\s*/u, '#');
+      if (!unique.has(key)) unique.set(key, id);
+    }
+    const ids = [...unique.values()].sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
     const invalid = ids.filter((id) => !parseRiotId(id));
     if (invalid.length) {
       return interaction.reply({ content: `Not a Riot ID like Name#TAG or a name of 3 to 16 characters: ${invalid.join(', ')}`, flags: MessageFlags.Ephemeral });
