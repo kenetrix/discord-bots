@@ -41,8 +41,14 @@ test('report sorts enemies by role and sorts their champions', () => {
 test('overview shows only bans, lanes and counter picks, with a button per player plus Bans', () => {
   const message = overview(report);
   const embed = message.embeds[0].toJSON();
-  assert.equal(embed.fields.length, 1);
-  assert.equal(embed.fields[0].value, '🏝️ Top vs **Top One** · our pick: **Vayne** or Teemo\n🛡️ Support vs **Sup** · our pick: no counter data');
+  assert.equal(embed.description, '🚫 All bans: Garen');
+  assert.deepEqual(
+    embed.fields.map((f) => [f.name, f.value]),
+    [
+      ['🏝️ Top vs Top One', '🚫 Ban: **Garen**\n🎯 Our pick: **Vayne** or Teemo'],
+      ['🛡️ Support vs Sup', '🚫 Ban: none\n🎯 Our pick: no counter data'],
+    ],
+  );
   assert.doesNotMatch(JSON.stringify(embed), /Gold|threat|Thresh/);
   const ids = message.components.flatMap((row) => row.toJSON().components.map((c) => c.custom_id));
   assert.deepEqual(ids, ['scout:abc123:p0', 'scout:abc123:p1', 'scout:abc123:bans']);
@@ -69,7 +75,7 @@ test('button ids and small helpers', () => {
 test('players that could not be scouted are named at the top of the overview', () => {
   const description = overview(withMissing).embeds[0].toJSON().description;
   assert.match(description, /^⚠️ \*\*Not scouted:\*\*\n• Ghost: no player/);
-  assert.match(description, /🚫 \*\*Ban:\*\* \*\*Garen\*\*/);
+  assert.match(description, /🚫 All bans: Garen$/);
 });
 
 test('pool marks bans and the likely pick in one list', () => {

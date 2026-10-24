@@ -103,22 +103,26 @@ function buttons(report, { back = false } = {}) {
 /** Players that could not be scouted, named first so nobody misses them. */
 const notScouted = (failed) => (failed.length ? `⚠️ **Not scouted:**\n${failed.map((f) => `• ${f}`).join('\n')}\n\n` : '');
 
-/** "🏝️ Top vs Name · our pick: Malphite or Yasuo": the enemy expected in a lane and what our player there should pick. */
-function laneLine(e) {
-  const name = `**${escapeMarkdown(e.player.riotId.split('#')[0])}**${e.player.guessedTag ? '\\*' : ''}`;
+/** One lane: who we face there, which of our bans are aimed at them and what our player there should pick. */
+function laneField(e, report) {
+  const name = `${escapeMarkdown(e.player.riotId.split('#')[0])}${e.player.guessedTag ? '*' : ''}`;
+  const mine = (list) => list.filter((b) => b.player === e.player.riotId).map((b) => b.champion);
+  const bans = mine(report.bans);
+  const backup = mine(report.alternatives);
+  const banText = bans.length ? bans.map((c) => `**${c}**`).join(' · ') : 'none';
+  const backupText = backup.length ? ` (backup: ${backup.join(', ')})` : '';
   const counter = e.counter?.pick ? `**${e.counter.pick.name}**${e.counter.alternative ? ` or ${e.counter.alternative.name}` : ''}` : 'no counter data';
-  return `${role(e.role)} vs ${name} · our pick: ${counter}`;
+  return { name: `${role(e.role)} vs ${name}`, value: `🚫 Ban: ${banText}${backupText}\n🎯 Our pick: ${counter}` };
 }
 
-/** The message for the whole team: missing players, bans, lanes and counter picks. Everything else is behind the buttons. */
+/** The message for the whole team: missing players, then per lane the bans and our counter pick. Everything else is behind the buttons. */
 function overview(report, options) {
-  const banList = report.bans.map((b) => `**${b.champion}**`).join(' · ') || 'not enough data';
-  const backup = report.alternatives.length ? `\nBackup: ${report.alternatives.map((b) => b.champion).join(' · ')}` : '';
+  const total = report.bans.length ? `🚫 All bans: ${report.bans.map((b) => b.champion).join(' · ')}` : 'Not enough data for bans.';
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
     .setColor(COLOR)
-    .setDescription(`${notScouted(report.failed)}🚫 **Ban:** ${banList}${backup}`.slice(0, 4096))
-    .addFields({ name: 'What our players should pick per lane', value: report.enemies.map(laneLine).join('\n') });
+    .setDescription(`${notScouted(report.failed)}${total}`.slice(0, 4096))
+    .addFields(report.enemies.map((e) => laneField(e, report)));
   const guessed = report.enemies.some((e) => e.player.guessedTag) ? ' · * tag guessed' : '';
   embed.setFooter({ text: `Our picks counter the champion each enemy most likely plays after our bans. Tap a player for details, or Bans for the reasons${guessed}.` });
   return { embeds: [embed], components: buttons(report, options) };
