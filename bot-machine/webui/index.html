@@ -74,6 +74,8 @@
   footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); gap: 12px; justify-content: center; }
   footer .update { color: var(--warn); font-weight: 600; }
   footer button { padding: 2px 10px; font-size: 13px; }
+  footer button.spin svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .hidden { display: none; }
 </style>
 </head>
@@ -156,12 +158,12 @@ function el(tag, props = {}, ...children) {
   return node;
 }
 
-function toast(text) {
+function toast(text, ms = 4000) {
   const node = $('toast');
   node.textContent = text;
   node.classList.remove('hidden');
   clearTimeout(toast.timer);
-  toast.timer = setTimeout(() => node.classList.add('hidden'), 4000);
+  toast.timer = setTimeout(() => node.classList.add('hidden'), ms);
 }
 
 function showOutput(text) {
@@ -399,7 +401,11 @@ function botView(bot) {
 }
 
 async function loadUpdate(force) {
+  // A manual check spins the icon until the answer is there.
+  const check = $('update-check');
+  check.classList.toggle('spin', Boolean(force));
   const { ok, data } = await api('GET', `/api/update${force ? '?refresh' : ''}`);
+  check.classList.remove('spin');
   if (!ok) return;
   const status = $('update-status');
   status.classList.toggle('update', Boolean(data.available));
@@ -408,6 +414,7 @@ async function loadUpdate(force) {
     : data.available
       ? `Version ${data.version} · A new update is available`
       : `Version ${data.version} · Up to date`;
+  if (force && !data.error && !data.available) toast('No update available', 3000);
   // Only offered when the install source really has newer files.
   $('self-update').classList.toggle('hidden', !data.available);
 }
