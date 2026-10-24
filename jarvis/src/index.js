@@ -53,8 +53,11 @@ function describeCommand(interaction) {
 client.on(Events.InteractionCreate, async (interaction) => {
   const started = Date.now();
   const where = interaction.guild ? `in ${who(interaction.guild)} ${who(interaction.channel ?? { id: interaction.channelId })}` : 'in a DM';
-  const what = interaction.isChatInputCommand() ? describeCommand(interaction) : interaction.customId;
+  const what = interaction.isChatInputCommand() || interaction.isAutocomplete() ? describeCommand(interaction) : interaction.customId;
   try {
+    if (interaction.isAutocomplete()) {
+      return await byName.get(interaction.commandName)?.autocomplete?.(interaction);
+    }
     if (interaction.isChatInputCommand()) {
       const command = byName.get(interaction.commandName);
       log.info(`${what} by ${who(interaction.user)} ${where}`);
