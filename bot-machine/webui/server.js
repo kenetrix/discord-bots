@@ -28,7 +28,8 @@ const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
 const KEY_RE = /^[A-Z_][A-Z0-9_]*$/;
 const PATH_RE = /^[A-Za-z0-9._/-]*$/;
 const SECRET_RE = /TOKEN|SECRET|PASSWORD|KEY/;
-const INVITE_PERMISSIONS = '1099780156422';
+// Ban, Moderate (timeout), Manage Roles, Manage Messages, Read Message History, View Channel, Send Messages, Embed Links.
+const INVITE_PERMISSIONS = '1099780156420';
 
 const sessions = new Map(); // token -> expiry
 const failures = new Map(); // ip -> { count, until }

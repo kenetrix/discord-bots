@@ -54,8 +54,9 @@ check_system() {
 }
 
 install_packages() {
-  say "Installing packages (bash, git, nodejs, npm, su-exec, nano)"
-  apk add --no-cache bash git nodejs npm su-exec nano >/dev/null
+  # tzdata lets botctl write its log lines in the time zone of the bot (TZ in its .env).
+  say "Installing packages (bash, git, nodejs, npm, su-exec, nano, tzdata)"
+  apk add --no-cache bash git nodejs npm su-exec nano tzdata >/dev/null
 }
 
 create_user() {

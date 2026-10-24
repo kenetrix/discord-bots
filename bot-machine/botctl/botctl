@@ -204,9 +204,11 @@ register_commands() {
 # with_log <name> <action> <command…>: runs the command and also writes its output into the bot's log, in the
 # bot's own line format ("2026-10-24 09:35:12 INFO  [botctl] …"), so it shows up in the log view.
 with_log() {
-  local name="$1" action="$2" log="/var/log/bots/$1.log" rc=0 line
+  local name="$1" action="$2" log="/var/log/bots/$1.log" rc=0 line tz
   shift 2
-  log_line() { printf '%s %-5s [botctl] %s\n' "$(date '+%F %T')" "$1" "$2" >>"$log"; }
+  # Same time zone as the bot's own lines: TZ from its .env, else the system's.
+  tz=$(sed -n 's/^TZ=["'\'']\{0,1\}\([^"'\'']*\).*/\1/p' "$(app_dir "$name" 2>/dev/null)/.env" 2>/dev/null | tail -n 1) || tz=""
+  log_line() { printf '%s %-5s [botctl] %s\n' "$(if [[ -n "$tz" ]]; then TZ="$tz" date '+%F %T'; else date '+%F %T'; fi)" "$1" "$2" >>"$log"; }
   log_line INFO "botctl $action $name"
   "$@" 2>&1 | while IFS= read -r line; do
     printf '%s\n' "$line"
