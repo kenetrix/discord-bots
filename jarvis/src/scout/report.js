@@ -130,6 +130,18 @@ function overview(report, options) {
   return { embeds: [embed], components: buttons(report, options) };
 }
 
+/** How many accounts share the player's name; OP.GG's search shows at most 100. */
+const namesakeCount = (player) => (player.namesakes.length + 1 >= 100 ? '100+' : player.namesakes.length + 1);
+
+/** Why the tag of a player scouted by name alone may be wrong; empty when the tag was given or certain. */
+function tagNote(player) {
+  if (!player.guessedTag) return '';
+  if (!player.namesakes?.length) return '\nTag guessed from the region.';
+  const others = player.namesakes.slice(0, 5).map((t) => `#${escapeMarkdown(t)}`).join(', ');
+  const more = player.namesakes.length > 5 ? ` and ${player.namesakes.length - 5} more` : '';
+  return `\nPicked from ${namesakeCount(player)} players with this name (active, highest rank). Others: ${others}${more}. Wrong one? Scout again with Name#TAG.`;
+}
+
 /** Everything about one enemy, in the same order as their card: rank, pool, matchups, roles. */
 function playerView(report, index) {
   const e = report.enemies[index];
@@ -143,7 +155,7 @@ function playerView(report, index) {
     .setTitle(`${role(e.role)} · ${p.riotId}`)
     .setURL(opggUrl(p.riotId, report.region))
     .setColor(COLOR)
-    .setDescription(`${rankLine(p.rank)}\n${e.threat}: ${e.threatReason}${p.guessedTag ? '\nTag guessed from the region.' : ''}`)
+    .setDescription(`${rankLine(p.rank)}\n${e.threat}: ${e.threatReason}${tagNote(p)}`)
     .addFields(
       { name: 'Champion pool (ranked, this season)', value: poolText(p.champions, report.banned, e.champion, { limit: 6, stats: true }) },
       {
@@ -192,4 +204,4 @@ function render(report, view) {
   return index !== undefined && report.enemies[index] ? playerView(report, Number(index)) : null;
 }
 
-module.exports = { buildReport, overview, render, parseButton, shortRank, poolText };
+module.exports = { buildReport, overview, render, parseButton, shortRank, poolText, namesakeCount };

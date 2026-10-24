@@ -90,3 +90,16 @@ test('pool marks bans and the likely pick in one list', () => {
   assert.equal(poolText(champions, new Set(), 'Z', { limit: 1, stats: true }), 'A · 30 games · 50 %\n➜ **Z** (recent games)');
   assert.equal(poolText([], new Set(), null, { limit: 3, stats: false }), 'no ranked games this season');
 });
+
+test('detail view says how the tag of a player scouted by name was found', () => {
+  const description = (extra) => {
+    const players = [{ ...player('Top One#EUW', 'TOP', 'Garen'), ...extra }];
+    return render({ ...report, enemies: [{ ...report.enemies[0], player: players[0] }] }, 'p0').embeds[0].toJSON().description;
+  };
+  assert.doesNotMatch(description({ guessedTag: false, namesakes: [] }), /Tag|Picked/);
+  assert.match(description({ guessedTag: true }), /\nTag guessed from the region\.$/);
+  assert.match(
+    description({ guessedTag: true, namesakes: ['A', 'B', 'C', 'D', 'E', 'F_G'] }),
+    /\nPicked from 7 players with this name \(active, highest rank\)\. Others: #A, #B, #C, #D, #E and 1 more\. Wrong one\? Scout again with Name#TAG\.$/,
+  );
+});
