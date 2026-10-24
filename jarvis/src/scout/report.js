@@ -13,7 +13,6 @@ const LEGEND = '🚫 = we ban it · ➜ = likely pick after our bans';
 const escapeMarkdown = (text) => text.replace(/[\\[\]()*_~`|>]/g, '\\$&');
 const role = (r) => `${ROLE_ICON[r] ?? ''} ${ROLE_LABEL[r] ?? '?'}`;
 const winRate = (c) => (c.games ? Math.round((c.wins / c.games) * 100) : 0);
-const link = (player, region) => `[${escapeMarkdown(player.riotId)}](${opggUrl(player.riotId, region)})${player.guessedTag ? '\\*' : ''}`;
 
 /** "MASTER 26 LP, 51 % WR" -> "Master 26 LP": the rank without the record. */
 function shortRank(rank) {
@@ -104,7 +103,14 @@ function buttons(report, { back = false } = {}) {
 /** Players that could not be scouted, named first so nobody misses them. */
 const notScouted = (failed) => (failed.length ? `⚠️ **Not scouted:**\n${failed.map((f) => `• ${f}`).join('\n')}\n\n` : '');
 
-/** The message for the whole team: bans first, then one card per enemy, details behind the buttons. */
+/** "⛰️ Top · Name → Malphite or Yasuo": the enemy expected in a lane and what we pick against them. */
+function laneLine(e) {
+  const name = `**${escapeMarkdown(e.player.riotId.split('#')[0])}**${e.player.guessedTag ? '\\*' : ''}`;
+  const counter = e.counter?.pick ? `${e.counter.pick.name}${e.counter.alternative ? ` or ${e.counter.alternative.name}` : ''}` : 'no counter data';
+  return `${role(e.role)} · ${name} → ${counter}`;
+}
+
+/** The message for the whole team: missing players, bans, lanes and counter picks. Everything else is behind the buttons. */
 function overview(report, options) {
   const banList = report.bans.map((b) => `**${b.champion}**`).join(' · ') || 'not enough data';
   const backup = report.alternatives.length ? `\nBackup: ${report.alternatives.map((b) => b.champion).join(' · ')}` : '';
@@ -112,21 +118,9 @@ function overview(report, options) {
     .setTitle(`🔍 Clash scout · ${report.region}`)
     .setColor(COLOR)
     .setDescription(`${notScouted(report.failed)}🚫 **Ban:** ${banList}${backup}`.slice(0, 4096))
-    .addFields(
-      report.enemies.map((e) => ({
-        name: `${role(e.role)} · ${e.threat}`,
-        value: [
-          link(e.player, report.region),
-          rankLine(e.player.rank),
-          poolText(e.player.champions, report.banned, e.champion, { limit: 3, stats: false }),
-          e.counter?.pick ? `🎯 Our pick: **${e.counter.pick.name}**` : '🎯 Our pick: no counter data',
-          e.second ? `2nd role: ${role(e.second.role)}` : '2nd role: none',
-        ].join('\n'),
-        inline: true,
-      })),
-    );
+    .addFields({ name: 'Lanes and our counter picks', value: report.enemies.map(laneLine).join('\n') });
   const guessed = report.enemies.some((e) => e.player.guessedTag) ? ' · * tag guessed' : '';
-  embed.setFooter({ text: `${LEGEND}${guessed}\nThreat: rank first, then games and win rate on their best champion.\nTap a player or Bans for details.` });
+  embed.setFooter({ text: `Tap a player for their details, or Bans for the reasons${guessed}.` });
   return { embeds: [embed], components: buttons(report, options) };
 }
 

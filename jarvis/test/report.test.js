@@ -38,13 +38,12 @@ test('report sorts enemies by role and sorts their champions', () => {
   assert.equal(report.enemies[1].threat, '🟠 Medium threat');
 });
 
-test('overview links every player and has a button per player plus Bans', () => {
+test('overview shows only bans, lanes and counter picks, with a button per player plus Bans', () => {
   const message = overview(report);
   const embed = message.embeds[0].toJSON();
-  assert.equal(embed.fields.length, 2);
-  assert.match(embed.fields[0].value, /\[Top One#EUW\]\(https:\/\/op\.gg\/lol\/summoners\/euw\/Top%20One-EUW\)/);
-  assert.match(embed.fields[0].value, /🚫 Garen · Other/);
-  assert.match(embed.fields[0].value, /🎯 Our pick: \*\*Vayne\*\*/);
+  assert.equal(embed.fields.length, 1);
+  assert.equal(embed.fields[0].value, '⛰️ Top · **Top One** → Vayne or Teemo\n🛡️ Support · **Sup** → no counter data');
+  assert.doesNotMatch(JSON.stringify(embed), /Gold|threat|Thresh/);
   const ids = message.components.flatMap((row) => row.toJSON().components.map((c) => c.custom_id));
   assert.deepEqual(ids, ['scout:abc123:p0', 'scout:abc123:p1', 'scout:abc123:bans']);
 });
