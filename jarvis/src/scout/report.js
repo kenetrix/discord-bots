@@ -124,7 +124,7 @@ function priorityByLane(report) {
 /** The message for the whole team: missing players, then per lane the bans and our counter pick. Everything else is behind the buttons. */
 function overview(report, options) {
   const total = report.priority.length
-    ? `**Priority bans** (per lane, strongest first)\n${priorityByLane(report).map((l) => `${role(l.role)}: ${l.bans.map((b) => `**${b.champion}**`).join(' · ')}`).join('\n')}`
+    ? `**Priority bans** (per lane, strongest first)\n${priorityByLane(report).map((l) => `**${ROLE_LABEL[l.role]}:** ${l.bans.map((b) => `${b.champion} (${escapeMarkdown(b.player.split('#')[0])})`).join(' · ')}`).join('\n')}`
     : 'Not enough data for bans.';
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
@@ -187,7 +187,7 @@ function bansView(report) {
     .setColor(COLOR)
     .setDescription('Priority bans are the game-deciding champions, grouped by lane and strongest first: only champions with a win rate of 52 % or more, lowered when not played in the last 20 games, times the player\'s rank. Bans per lane give each enemy at least one ban, at most three.')
     .addFields(
-      { name: '🔥 Priority bans (by lane, strongest first)', value: priorityByLane(report).map((l) => `${role(l.role)}\n${l.bans.map(line).join('\n')}`).join('\n') || 'not enough data' },
+      { name: '🔥 Priority bans (by lane, strongest first)', value: priorityByLane(report).map((l) => `**${ROLE_LABEL[l.role]}**\n${l.bans.map(line).join('\n')}`).join('\n') || 'not enough data' },
       { name: '🚫 Bans per lane (at least one per enemy)', value: report.bans.map((b, i) => `${i + 1}. ${line(b)}`).join('\n') || 'not enough data' },
     );
   if (report.alternatives.length) embed.addFields({ name: 'Backup', value: report.alternatives.map(line).join('\n') });
