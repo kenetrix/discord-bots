@@ -2,6 +2,9 @@
 const { OpggError, callTool } = require('./mcp');
 const { TtlCache } = require('./cache');
 const { searchPlayers } = require('./search');
+const { logger } = require('../log');
+
+const log = logger('scout');
 
 // A player's data hardly changes during one Clash day; matchup stats change with the patch.
 const playerCache = new TtlCache(30 * 60e3);
@@ -141,7 +144,7 @@ async function getPlayer(riotId, region) {
 
   // Then OP.GG's name search, which knows custom tags; it is unofficial, so a failure only means not found.
   const found = await searchPlayers(id.gameName, region).catch((err) => {
-    console.warn(`OP.GG name search for ${id.gameName} failed:`, err.message);
+    log.warn(`OP.GG name search for "${id.gameName}" in ${region} failed, guessing tags only`, err);
     return [];
   });
   const fresh = found.filter((a) => !tried.some((t) => t.toLowerCase() === a.tagLine.toLowerCase()));
@@ -160,8 +163,12 @@ async function getPlayer(riotId, region) {
   throw err;
 }
 
-function getTaggedPlayer(id, region) {
-  return playerCache.get(`${region}:${id.gameName}#${id.tagLine}`.toLowerCase(), () => fetchPlayer(id, region));
+/** One account from the cache or OP.GG; `cached` tells which, for the log. */
+async function getTaggedPlayer(id, region) {
+  const key = `${region}:${id.gameName}#${id.tagLine}`.toLowerCase();
+  const cached = playerCache.peek(key) !== undefined;
+  const player = await playerCache.get(key, () => fetchPlayer(id, region));
+  return { ...player, cached };
 }
 
 async function fetchPlayer(id, region) {
