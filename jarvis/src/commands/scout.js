@@ -21,12 +21,12 @@ function failureReason(err, region) {
   return 'OP.GG could not look this player up.';
 }
 
-/** Players found by name alone among several accounts with that name, so the caller can check the pick. */
+/** Players found by OP.GG's name search, so the caller can check which account was picked. */
 function pickedByName(players) {
-  const picked = players.filter((p) => p.namesakes?.length);
+  const picked = players.filter((p) => p.foundBy === 'search');
   if (!picked.length) return '';
-  const lines = picked.map((p) => `• ${p.riotId}, out of ${namesakeCount(p)} players with this name`);
-  return `\nℹ️ Picked by name (active, highest rank):\n${lines.join('\n')}\nWrong one? Scout again with Name#TAG.`;
+  const lines = picked.map((p) => `• ${p.riotId}${p.namesakes.length ? `, out of ${namesakeCount(p)} players with this name` : ', the only player with this name'}`);
+  return `\nℹ️ Found by name search (active, highest rank first):\n${lines.join('\n')}\nWrong one? Scout again with Name#TAG.`;
 }
 
 /** The reply when nobody could be scouted: one cause for all players if they share it, else the list. */

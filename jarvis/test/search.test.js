@@ -48,7 +48,7 @@ test('exact name matches come first: active accounts, then by rank', () => {
   assert.deepEqual(rankAccounts(parseSearch(SEARCH), 'Enemy', NOW).map((a) => a.tagLine), ['OTHER', 'MAIN', 'SMURF', 'NEW', 'OLD'], 'no exact match keeps what OP.GG found');
 });
 
-test('a bare name is looked up with the name search, then with default tags', async (t) => {
+test('a bare name is tried with the default tags, then with the name search', async (t) => {
   const { getPlayer } = require('../src/scout/opgg');
   const realFetch = global.fetch;
   const realWarn = console.warn;
@@ -60,10 +60,12 @@ test('a bare name is looked up with the name search, then with default tags', as
   const rpc = (body) => new Response(JSON.stringify(body), { headers: { 'content-type': 'application/json' } });
   const known = new Set(['Enemy One#MAIN', 'Enemy One#SMURF', 'Solo#EUW']);
   const asked = [];
+  const searched = [];
   let search = (name) => (name === 'Enemy One' ? SEARCH : '0:{}');
   global.fetch = async (url, init) => {
     if (String(url).includes('/summoners/search')) {
       const q = new URL(url).searchParams.get('q');
+      searched.push(q);
       const text = search(q);
       return text === null ? new Response('busy', { status: 429 }) : new Response(text, { headers: { 'content-type': 'text/x-component' } });
     }
@@ -78,29 +80,40 @@ test('a bare name is looked up with the name search, then with default tags', as
     return rpc({ jsonrpc: '2.0', id: body.id, result: { content: [{ type: 'text', text }] } });
   };
 
-  // Several accounts: the active one with the highest rank (by exact name, case and spaces ignored).
-  const player = await getPlayer('Enemy One', 'EUW');
-  assert.equal(player.riotId, 'Enemy One#MAIN');
-  assert.equal(player.guessedTag, true);
-  assert.deepEqual(player.namesakes, ['SMURF', 'NEW', 'OLD']);
-
-  // The search is down: back to the default tags, without marking namesakes.
-  search = () => null;
+  // A default tag that exists wins, without asking the name search.
   const solo = await getPlayer('Solo', 'EUW');
   assert.equal(solo.riotId, 'Solo#EUW');
   assert.equal(solo.guessedTag, true);
-  assert.equal(solo.namesakes, undefined);
+  assert.equal(solo.foundBy, undefined);
+  assert.deepEqual(searched, []);
 
-  // One account with that name is not a guess.
-  search = () => `1:["$","$L72","a",${account('Single', 'X1', 'GOLD', 2, 0, '2026-10-23T00:00:00+09:00')}]`;
+  // No default tag: the active account with the highest rank (by exact name, case and spaces ignored).
+  asked.length = 0;
+  const player = await getPlayer('Enemy One', 'EUW');
+  assert.deepEqual(asked, ['Enemy One#EUW', 'Enemy One#EUW1', 'Enemy One#MAIN']);
+  assert.equal(player.riotId, 'Enemy One#MAIN');
+  assert.equal(player.foundBy, 'search');
+  assert.equal(player.guessedTag, true);
+  assert.deepEqual(player.namesakes, ['SMURF', 'NEW', 'OLD']);
+
+  // One account with that name is not a guess; default tags from the search are not asked twice.
+  search = () => [
+    `1:["$","$L72","a",${account('Single', 'EUW', 'GOLD', 2, 0, '2026-10-23T00:00:00+09:00')}]`,
+    `2:["$","$L72","b",${account('Single', 'X1', 'GOLD', 2, 0, '2026-10-23T00:00:00+09:00')}]`,
+  ].join('\n');
   known.add('Single#X1');
+  asked.length = 0;
   const single = await getPlayer('Single', 'EUW');
+  assert.deepEqual(asked, ['Single#EUW', 'Single#EUW1', 'Single#X1']);
   assert.equal(single.riotId, 'Single#X1');
   assert.equal(single.guessedTag, false);
+  assert.deepEqual(single.namesakes, []);
 
   // Accounts the search knows but OP.GG does not are skipped, and every tried tag is reported.
   search = () => `1:["$","$L72","a",${account('Ghost', 'GONE', 'GOLD', 2, 0, '2026-10-23T00:00:00+09:00')}]`;
-  asked.length = 0;
-  await assert.rejects(getPlayer('Ghost', 'EUW'), (err) => err.kind === 'not_found' && err.triedTags.join() === 'GONE,EUW,EUW1');
-  assert.deepEqual(asked, ['Ghost#GONE', 'Ghost#EUW', 'Ghost#EUW1']);
+  await assert.rejects(getPlayer('Ghost', 'EUW'), (err) => err.kind === 'not_found' && err.triedTags.join() === 'EUW,EUW1,GONE');
+
+  // The search is down: not found after the default tags.
+  search = () => null;
+  await assert.rejects(getPlayer('Nobody', 'EUW'), (err) => err.kind === 'not_found' && err.triedTags.join() === 'EUW,EUW1');
 });
