@@ -112,13 +112,14 @@ function laneField(e, report) {
   const banText = bans.length ? bans.map((c) => `**${c}**`).join(' · ') : 'none';
   const backupText = backup.length ? ` (backup: ${backup.join(', ')})` : '';
   const counter = e.counter?.pick ? `**${e.counter.pick.name}**${e.counter.alternative ? ` or ${e.counter.alternative.name}` : ''}` : 'no counter data';
-  return { name: `${role(e.role)} vs ${name}`, value: `🚫 Ban: ${banText}${backupText}\n🎯 Our pick: ${counter}` };
+  return { name: `${role(e.role)} vs ${name}`, value: `Ban: ${banText}${backupText}\nPick: ${counter}` };
 }
 
 /** The message for the whole team: missing players, then per lane the bans and our counter pick. Everything else is behind the buttons. */
 function overview(report, options) {
+  const laneIcon = (b) => ROLE_ICON[report.enemies.find((e) => e.player.riotId === b.player)?.role] ?? '❔';
   const total = report.priority.length
-    ? `🔥 **Priority bans:** ${report.priority.map((b) => b.champion).join(' · ')}\nThe most dangerous champions of all enemies. Below: at least one ban per lane.`
+    ? `**Priority bans**\n${report.priority.map((b) => `${laneIcon(b)} ${b.champion}`).join('\n')}`
     : 'Not enough data for bans.';
   const embed = new EmbedBuilder()
     .setTitle(`🔍 Clash scout · ${report.region}`)
@@ -126,7 +127,7 @@ function overview(report, options) {
     .setDescription(`${notScouted(report.failed)}${total}`.slice(0, 4096))
     .addFields(report.enemies.map((e) => laneField(e, report)));
   const guessed = report.enemies.some((e) => e.player.guessedTag) ? ' · * tag guessed' : '';
-  embed.setFooter({ text: `Our picks counter the champion each enemy most likely plays after our bans. Tap a player for details, or Bans for the reasons${guessed}.` });
+  embed.setFooter({ text: `Tap a player or Bans for details${guessed}` });
   return { embeds: [embed], components: buttons(report, options) };
 }
 

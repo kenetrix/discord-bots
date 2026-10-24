@@ -42,12 +42,12 @@ test('report sorts enemies by role and sorts their champions', () => {
 test('overview shows only bans, lanes and counter picks, with a button per player plus Bans', () => {
   const message = overview(report);
   const embed = message.embeds[0].toJSON();
-  assert.match(embed.description, /^🔥 \*\*Priority bans:\*\* Garen\n/);
+  assert.match(embed.description, /^\*\*Priority bans\*\*\n🏝️ Garen$/);
   assert.deepEqual(
     embed.fields.map((f) => [f.name, f.value]),
     [
-      ['🏝️ Top vs Top One', '🚫 Ban: **Garen**\n🎯 Our pick: **Vayne** or Teemo'],
-      ['🛡️ Support vs Sup', '🚫 Ban: none\n🎯 Our pick: no counter data'],
+      ['🏝️ Top vs Top One', 'Ban: **Garen**\nPick: **Vayne** or Teemo'],
+      ['🛡️ Support vs Sup', 'Ban: none\nPick: no counter data'],
     ],
   );
   assert.doesNotMatch(JSON.stringify(embed), /Gold|threat|Thresh/);
@@ -76,7 +76,7 @@ test('button ids and small helpers', () => {
 test('players that could not be scouted are named at the top of the overview', () => {
   const description = overview(withMissing).embeds[0].toJSON().description;
   assert.match(description, /^⚠️ \*\*Not scouted:\*\*\n• Ghost: no player/);
-  assert.match(description, /🔥 \*\*Priority bans:\*\* Garen/);
+  assert.match(description, /\*\*Priority bans\*\*\n🏝️ Garen/);
 });
 
 test('pool marks bans and the likely pick in one list', () => {
