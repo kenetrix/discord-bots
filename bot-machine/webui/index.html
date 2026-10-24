@@ -6,8 +6,8 @@
 <title>Bot Machine</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <style nonce="{{NONCE}}">
-  :root { color-scheme: light dark; --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7384; --line: #dfe3ea; --accent: #3b5bdb; --ok: #2b8a3e; --bad: #c92a2a; --shadow: 0 6px 24px rgba(0, 0, 0, .12); }
-  @media (prefers-color-scheme: dark) { :root { --bg: #14171f; --card: #1d212c; --text: #e6e9f0; --muted: #98a0b3; --line: #2c3240; --accent: #748ffc; --ok: #51cf66; --bad: #ff6b6b; --shadow: 0 6px 24px rgba(0, 0, 0, .5); } }
+  :root { color-scheme: light dark; --bg: #f5f6f8; --card: #fff; --text: #1d2330; --muted: #6b7384; --line: #dfe3ea; --accent: #3b5bdb; --ok: #2b8a3e; --bad: #c92a2a; --warn: #b35c00; --shadow: 0 6px 24px rgba(0, 0, 0, .12); }
+  @media (prefers-color-scheme: dark) { :root { --bg: #14171f; --card: #1d212c; --text: #e6e9f0; --muted: #98a0b3; --line: #2c3240; --accent: #748ffc; --ok: #51cf66; --bad: #ff6b6b; --warn: #ffa94d; --shadow: 0 6px 24px rgba(0, 0, 0, .5); } }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
   main { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
@@ -30,10 +30,12 @@
   button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
   a.btn { padding: 5px 12px; border-radius: 7px; border: 1px solid var(--line); background: var(--card); color: var(--text); text-decoration: none; }
   a.btn:hover { border-color: var(--muted); }
-  button.icon { padding: 5px 8px; }
+  button.icon { padding: 5px 7px; display: inline-flex; align-items: center; }
+  button.icon svg { width: 16px; height: 16px; }
   .invite { gap: 4px; }
   button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
   button.ghost:hover { color: var(--text); border-color: var(--line); }
+  button.ghost.active { color: var(--accent); border-color: var(--accent); background: var(--bg); }
   button.danger { color: var(--bad); }
   button.danger:hover { border-color: var(--bad); }
   button:disabled { opacity: .5; cursor: wait; }
@@ -46,6 +48,10 @@
   .var { margin-bottom: 6px; }
   .varbox { margin-top: 12px; }
   .logbar { margin-bottom: 6px; }
+  pre.log { max-height: 480px; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre; overflow-x: auto; }
+  pre.log .debug { color: var(--muted); }
+  pre.log .warn { color: var(--warn); }
+  pre.log .error { color: var(--bad); }
   .varname { flex: 0 0 160px; font-family: ui-monospace, monospace; font-size: 12.5px; }
   .menu { position: relative; }
   .menu summary { list-style: none; cursor: pointer; padding: 5px 10px; border-radius: 7px; color: var(--muted); user-select: none; }
@@ -77,7 +83,6 @@
       <h1>🤖 Bot Machine</h1>
       <div class="row">
         <button id="add-open" class="primary">+ Add bot</button>
-        <button id="update-all">Update all</button>
         <button id="logout" class="ghost">Log out</button>
       </div>
     </header>
@@ -111,6 +116,12 @@
 'use strict';
 const $ = (id) => document.getElementById(id);
 const SECRET_RE = /TOKEN|SECRET|PASSWORD|KEY/;
+const ICONS = {
+  refresh: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>',
+  copy: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>',
+};
+// Level of a Jarvis log line ("2026-10-24 09:35:12 WARN  [scope] ...").
+const LEVEL_RE = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d (DEBUG|INFO|WARN|ERROR)\b/;
 let busy = false;
 
 async function api(method, url, body) {
@@ -197,10 +208,17 @@ function varRow(variable) {
   return el('label', { className: 'row var' }, el('span', { className: 'varname', textContent: variable.key }), input);
 }
 
-async function toggleVariables(bot, box) {
-  if (box.childElementCount) return box.replaceChildren();
+async function toggleVariables(bot, box, button) {
+  if (box.childElementCount) {
+    button.classList.remove('active');
+    return box.replaceChildren();
+  }
+  button.classList.add('active');
   const { ok, data } = await api('GET', `/api/bots/${bot.name}/env`);
-  if (!ok) return toast(data.error || 'Could not load variables');
+  if (!ok) {
+    button.classList.remove('active');
+    return toast(data.error || 'Could not load variables');
+  }
   const rows = el('div', {}, ...data.vars.map(varRow));
   const extraKey = el('input', { placeholder: 'NEW_VARIABLE', pattern: '[A-Z_][A-Z0-9_]*' });
   const extraValue = el('input', { className: 'grow', placeholder: 'value', autocomplete: 'off' });
@@ -233,21 +251,33 @@ async function toggleVariables(bot, box) {
   );
 }
 
-async function toggleLogs(bot, box) {
-  if (box.childElementCount) return box.replaceChildren();
-  const text = el('pre');
+/** Log lines with warnings, errors and debug lines coloured by level; stack traces keep the colour of their line. */
+function logLines(output) {
+  let level = '';
+  return output.split('\n').map((line) => {
+    const match = LEVEL_RE.exec(line);
+    if (match) level = match[1] === 'INFO' ? '' : match[1].toLowerCase();
+    return el('span', { className: level, textContent: `${line}\n` });
+  });
+}
+
+async function toggleLogs(bot, box, button) {
+  if (box.childElementCount) {
+    button.classList.remove('active');
+    return box.replaceChildren();
+  }
+  button.classList.add('active');
+  const text = el('pre', { className: 'log' });
   const load = async () => {
     const { data } = await api('GET', `/api/bots/${bot.name}/logs?lines=200`);
-    text.textContent = data.output || '(log is empty)';
+    if (data.output) text.replaceChildren(...logLines(data.output));
+    else text.textContent = '(log is empty)';
     text.scrollTop = text.scrollHeight;
   };
   box.replaceChildren(
     el('div', { className: 'row spread logbar' },
       el('span', { className: 'muted', textContent: 'Last 200 log lines' }),
-      el('div', { className: 'row' },
-        el('button', { className: 'ghost', textContent: 'Refresh', onclick: load }),
-        el('button', { className: 'ghost', textContent: 'Hide', onclick: () => box.replaceChildren() }),
-      ),
+      el('button', { className: 'ghost icon', innerHTML: ICONS.refresh, title: 'Refresh the log', 'aria-label': 'Refresh the log', onclick: load }),
     ),
     text,
   );
@@ -279,7 +309,7 @@ function botView(bot) {
     ? el('div', { className: 'row invite' },
         el('button', {
           className: 'ghost icon',
-          textContent: '\u{1F4CB}',
+          innerHTML: ICONS.copy,
           title: 'Copy the Discord invite link',
           'aria-label': 'Copy invite link',
           onclick: async () => toast((await copyText(bot.inviteUrl)) ? 'Invite link copied.' : 'Copying failed.'),
@@ -309,8 +339,8 @@ function botView(bot) {
       el('button', running ? { textContent: 'Stop', onclick: post(bot.name, 'stop') } : { className: 'primary', textContent: 'Start', onclick: post(bot.name, 'start') }),
       el('button', { textContent: 'Restart', onclick: post(bot.name, 'restart') }),
       el('span', { className: 'sep' }),
-      el('button', { className: 'ghost', textContent: 'Variables', onclick: () => toggleVariables(bot, box) }),
-      el('button', { className: 'ghost', textContent: 'Logs', onclick: () => toggleLogs(bot, logBox) }),
+      el('button', { className: 'ghost', textContent: 'Variables', onclick: (e) => toggleVariables(bot, box, e.currentTarget) }),
+      el('button', { className: 'ghost', textContent: 'Logs', onclick: (e) => toggleLogs(bot, logBox, e.currentTarget) }),
       menu,
     ),
     box,
@@ -345,7 +375,6 @@ $('logout').addEventListener('click', async () => {
   showLogin();
 });
 
-$('update-all').addEventListener('click', () => act('Update all', () => api('POST', '/api/update-all')));
 $('output-close').addEventListener('click', () => $('output-card').classList.add('hidden'));
 
 $('add-open').addEventListener('click', () => $('add-dialog').showModal());
