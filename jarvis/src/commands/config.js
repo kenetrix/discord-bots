@@ -10,6 +10,9 @@ const {
 } = require('discord.js');
 const { stmts } = require('../db');
 const { ephemeral } = require('../util');
+const { logger, who } = require('../log');
+
+const log = logger('config');
 
 const MODLOG_SELECT = 'config:modlog';
 const MODLOG_OFF = 'config:modlog-off';
@@ -72,7 +75,7 @@ function welcomeChannel(guild) {
 async function welcome(guild) {
   const channel = welcomeChannel(guild);
   if (!channel) {
-    console.warn(`No channel to post the settings dashboard in ${guild.id}; use /config.`);
+    log.warn(`No channel to post the settings dashboard in on ${who(guild)}; use /config there.`);
     return;
   }
   const { embeds, components } = dashboard(guild);

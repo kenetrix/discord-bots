@@ -1,6 +1,9 @@
 const { SlashCommandBuilder, PermissionFlagsBits, MessageFlags } = require('discord.js');
 const { cleanChannel } = require('../cleanup');
 const { modlog } = require('../modlog');
+const { logger, who } = require('../log');
+
+const log = logger('clean');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -40,6 +43,8 @@ module.exports = {
       maxScan: user || !amount ? 2000 + keepLatest : amount + keepLatest + 100,
       allowOld: false,
     });
+
+    log.info(`${who(interaction.user)} deleted ${deleted} message(s) in ${who(interaction.channel)} on ${who(interaction.guild)}${skippedOld ? `, skipped ${skippedOld} older than 14 days` : ''}.`);
 
     await modlog(interaction.guild, {
       action: 'Clean',
