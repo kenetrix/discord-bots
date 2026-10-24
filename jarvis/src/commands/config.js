@@ -8,10 +8,13 @@ const {
   ButtonStyle,
   EmbedBuilder,
   MessageFlags,
+  PermissionsBitField,
 } = require('discord.js');
 const { stmts } = require('../db');
 const { ephemeral, missingPermissions, POST_PERMISSIONS } = require('../util');
 const { logger, who } = require('../log');
+const { describeJob } = require('../scheduler');
+const { timezone } = require('../config');
 
 const log = logger('config');
 
@@ -19,6 +22,11 @@ const MODLOG_SELECT = 'config:modlog';
 const MODLOG_OFF = 'config:modlog-off';
 const MODLOG_TYPES = [ChannelType.GuildText, ChannelType.GuildAnnouncement];
 const MAX_OPTIONS = 25; // Discord's limit for one select menu
+const MAX_FIELD = 1024; // Discord's limit for one embed field value
+const POST_PERMISSION_NAMES = new PermissionsBitField(POST_PERMISSIONS)
+  .toArray()
+  .map((name) => name.replace(/([a-z])([A-Z])/g, '$1 $2'))
+  .join(', ');
 
 /** Text channels of the server in their sidebar order, split by whether Jarvis can post log embeds there. */
 function logChannels(guild) {
@@ -27,11 +35,25 @@ function logChannels(guild) {
   return { usable: [...usable.values()], blocked: [...blocked.values()] };
 }
 
+/** Cleaner jobs with their settings, cut to fit into one embed field. */
+function jobList(jobs) {
+  if (!jobs.length) return 'None (create them with /cleaner)';
+  const lines = jobs.map((j) => `**#${j.id}** · ${describeJob(j)}`);
+  const footer = `\nManage them with /cleaner (time zone ${timezone}).`;
+  let text = '';
+  for (const [i, line] of lines.entries()) {
+    const more = `\n… and ${lines.length - i} more (see /cleaner list)`;
+    if (text.length + line.length + 1 + more.length + footer.length > MAX_FIELD) return text + more + footer;
+    text += (text ? '\n' : '') + line;
+  }
+  return text + footer;
+}
+
 /** Builds the dashboard message (embed plus controls) for a guild. */
 function dashboard(guild) {
   const modlogId = stmts.getSettings.get(guild.id)?.modlog_channel_id ?? null;
   const modlogChannel = modlogId ? guild.channels.cache.get(modlogId) : null;
-  const jobs = stmts.listJobs.all(guild.id).length;
+  const jobs = stmts.listJobs.all(guild.id);
 
   let modlogText = 'Disabled';
   if (modlogId) {
@@ -42,15 +64,11 @@ function dashboard(guild) {
 
   // Discord's channel picker cannot hide channels, so the menu only offers the channels Jarvis can post in.
   const { usable, blocked } = logChannels(guild);
-  const fields = [{ name: 'Mod log channel', value: modlogText }];
-  if (blocked.length) {
-    const names = blocked.slice(0, 15).map(String).join(', ');
-    fields.push({
-      name: `Channels I cannot post in (${blocked.length})`,
-      value: `${names}${blocked.length > 15 ? ', …' : ''}\nThey are not in the menu. To use one, give me View Channel, Send Messages and Embed Links there.`,
-    });
-  }
-  fields.push({ name: 'Cleaner jobs', value: jobs ? `${jobs} (manage them with /cleaner)` : 'None (create them with /cleaner)' });
+  if (blocked.length) modlogText += `\nℹ️ The menu only lists channels where I have ${POST_PERMISSION_NAMES}.`;
+  const fields = [
+    { name: 'Mod log channel', value: modlogText },
+    { name: `Cleaner jobs (${jobs.length})`, value: jobList(jobs) },
+  ];
 
   const embed = new EmbedBuilder().setTitle('Jarvis settings').setColor(0x5865f2).addFields(...fields);
 

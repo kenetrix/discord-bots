@@ -2,15 +2,8 @@ const { SlashCommandBuilder, PermissionFlagsBits, ChannelType, EmbedBuilder, Mes
 const cron = require('node-cron');
 const { stmts } = require('../db');
 const { ephemeral } = require('../util');
-const { ALL_VOICE, scheduleJob, unscheduleJob, runJob } = require('../scheduler');
+const { ALL_VOICE, PRESETS, describeJob, scheduleJob, unscheduleJob, runJob } = require('../scheduler');
 const { timezone } = require('../config');
-
-// Shorthands so nobody has to know cron syntax.
-const PRESETS = {
-  hourly: '0 * * * *',
-  daily: '0 4 * * *',
-  weekly: '0 4 * * 1',
-};
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -149,10 +142,7 @@ module.exports = {
           jobs
             .map(
               (j) =>
-                `**#${j.id}** · ${j.channel_id === ALL_VOICE ? 'all voice channels' : `<#${j.channel_id}>`} · \`${j.cron}\`` +
-                (j.max_age_hours ? ` · older than ${j.max_age_hours} h` : '') +
-                (j.keep_latest ? ` · keeps newest ${j.keep_latest}` : '') +
-                (j.keep_pinned ? '' : ' · incl. pinned') +
+                `**#${j.id}** · ${describeJob(j)}` +
                 `\nLast run: ${j.last_run_at ? `<t:${Math.floor(j.last_run_at / 1000)}:R>` : 'never'}`,
             )
             .join('\n\n'),

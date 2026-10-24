@@ -15,6 +15,28 @@ const running = new Set();
 /** Stored as channel_id of jobs that clear every voice channel of the server. */
 const ALL_VOICE = 'all-voice';
 
+// Shorthands so nobody has to know cron syntax.
+const PRESETS = {
+  hourly: '0 * * * *',
+  daily: '0 4 * * *',
+  weekly: '0 4 * * 1',
+};
+const PRESET_NAMES = {
+  [PRESETS.hourly]: 'hourly',
+  [PRESETS.daily]: 'daily 04:00',
+  [PRESETS.weekly]: 'weekly Mon 04:00',
+};
+
+/** One-line summary of a job's settings, e.g. "<#123> · daily 04:00 · older than 24 h". */
+function describeJob(job) {
+  return (
+    `${job.channel_id === ALL_VOICE ? 'all voice channels' : `<#${job.channel_id}>`} · ${PRESET_NAMES[job.cron] ?? `\`${job.cron}\``}` +
+    (job.max_age_hours ? ` · older than ${job.max_age_hours} h` : '') +
+    (job.keep_latest ? ` · keeps newest ${job.keep_latest}` : '') +
+    (job.keep_pinned ? '' : ' · incl. pinned')
+  );
+}
+
 const NEEDED_PERMISSIONS = [PermissionFlagsBits.ViewChannel, PermissionFlagsBits.ReadMessageHistory, PermissionFlagsBits.ManageMessages];
 
 /** Clears all voice channels of a guild; channels the bot may not manage are skipped. */
@@ -132,4 +154,4 @@ function startScheduler(client) {
   log.info(`Scheduled ${jobs.length} cleaner job(s) (time zone ${timezone}).`);
 }
 
-module.exports = { ALL_VOICE, startScheduler, scheduleJob, unscheduleJob, runJob };
+module.exports = { ALL_VOICE, PRESETS, describeJob, startScheduler, scheduleJob, unscheduleJob, runJob };
