@@ -20,21 +20,42 @@ function threat(champion, totalGames) {
   return Math.sqrt(champion.games) * (1 + share) * (smoothedWinRate(champion.wins, champion.games) / 0.5);
 }
 
+const MIN_RECENT_WEIGHT = 0.25; // a season champion that was not played lately still counts a quarter
+const FULL_RECENT_GAMES = 3; // recent games of a champion that make it fully current
+
+/**
+ * 0.25 to 1: how current a champion is, from its games among the player's recent matches.
+ * 1 when the recent history is unknown, so players without it are not penalised.
+ */
+function recency(player, name) {
+  if (!player.recent) return 1;
+  const games = player.recent.find((c) => c.name === name)?.games ?? 0;
+  return MIN_RECENT_WEIGHT + (1 - MIN_RECENT_WEIGHT) * Math.min(games / FULL_RECENT_GAMES, 1);
+}
+
+/** Season champions plus champions that only show up in the recent games (with their recent record). */
+function poolOf(player) {
+  const known = new Set(player.champions.map((c) => c.name));
+  const fresh = (player.recent ?? []).filter((c) => c.games >= 2 && !known.has(c.name));
+  return [...player.champions, ...fresh];
+}
+
 function winRate(champion) {
   return champion.games ? Math.round((champion.wins / champion.games) * 100) : 0;
 }
 
-/** Every champion of every player, scored and sorted by threat. */
+/** Every champion of every player, scored (season comfort times how recently it was played) and sorted by threat. */
 function rankThreats(players) {
   const threats = [];
   for (const player of players) {
     const total = player.champions.reduce((sum, c) => sum + c.games, 0);
-    for (const champion of player.champions) {
+    for (const champion of poolOf(player)) {
       if (!champion.games) continue;
-      threats.push({ champion: champion.name, player: player.riotId, games: champion.games, winRate: winRate(champion), score: threat(champion, total) });
+      const score = threat(champion, total) * recency(player, champion.name);
+      threats.push({ champion: champion.name, player: player.riotId, games: champion.games, winRate: winRate(champion), score });
     }
   }
-  return threats.sort((a, b) => b.score - a.score);
+  return threats.sort((a, b) => b.score - a.score || a.champion.localeCompare(b.champion));
 }
 
 /**
@@ -67,16 +88,25 @@ function recommendBans(players, { count = 5, alternatives = 3 } = {}) {
   return { bans, alternatives: picked.slice(count) };
 }
 
+const RANK_WEIGHT = 1.5; // threat factor per tier: a Gold player's champion counts 1.5 times a Silver player's
+
+/** Multiplies a champion's threat by the player's strength; Gold IV (3.25) is neutral. */
+function playerWeight(player) {
+  return RANK_WEIGHT ** ((rankValue(player.rank) ?? UNRANKED_VALUE) - 3.25);
+}
+
 /**
- * The most dangerous champions across all enemies, ranked only by threat with no limit per player,
- * so they may all belong to one player. The champion threat is weighted by the player's rank,
- * since a champion is more dangerous in the hands of a higher ranked player.
+ * The most dangerous champions across all enemies, strongest ban first, with no limit per player,
+ * so they may all belong to one player. The champion threat (season comfort and performance, discounted
+ * when the player has not played it lately) is multiplied by the player's strength, since the same
+ * champion is more dangerous in the hands of a higher ranked player. Ties are broken by name.
  */
 function priorityBans(players, count = 5) {
-  const rankOf = new Map(players.map((p) => [p.riotId, rankValue(p.rank) ?? UNRANKED_VALUE]));
+  const weightOf = new Map(players.map((p) => [p.riotId, playerWeight(p)]));
   const seen = new Set();
   const ranked = [];
-  for (const t of rankThreats(players).map((t) => ({ ...t, score: t.score * (1 + rankOf.get(t.player) / 10) })).sort((a, b) => b.score - a.score)) {
+  const weighted = rankThreats(players).map((t) => ({ ...t, score: t.score * weightOf.get(t.player) }));
+  for (const t of weighted.sort((a, b) => b.score - a.score || a.champion.localeCompare(b.champion))) {
     if (seen.has(t.champion)) continue;
     seen.add(t.champion);
     ranked.push(t);

@@ -120,6 +120,20 @@ function normalizeRoles(games) {
     }));
 }
 
+/** Games and wins per champion in the player's recent matches, most played first. */
+function normalizeRecent(games) {
+  const champions = new Map();
+  for (const game of games ?? []) {
+    const participant = game?.participants?.[0];
+    if (!participant?.champion_name) continue;
+    const entry = champions.get(participant.champion_name) ?? { name: participant.champion_name, games: 0, wins: 0 };
+    entry.games += 1;
+    if (participant.stats?.result === 'WIN') entry.wins += 1;
+    champions.set(participant.champion_name, entry);
+  }
+  return [...champions.values()].sort((a, b) => b.games - a.games);
+}
+
 /**
  * Rank, role stats and champion pool of one player, cached for 30 minutes. Takes Name#TAG or a bare name, which
  * is tried with the region's default tags and else looked up with OP.GG's name search. A player found by the
@@ -187,7 +201,7 @@ async function fetchPlayer(id, region) {
     callTool('lol_list_summoner_matches', {
       ...account,
       limit: 20,
-      desired_output_fields: ['data.game_history[].participants[].{champion_name,position}'],
+      desired_output_fields: ['data.game_history[].participants[].{champion_name,position,stats.result}'],
     }).catch((err) => {
       if (err.kind === 'not_found') return null;
       throw err;
@@ -199,6 +213,7 @@ async function fetchPlayer(id, region) {
     riotId: `${summoner.game_name ?? id.gameName}#${summoner.tagline ?? id.tagLine}`,
     rank: normalizeRank(summoner.league_stats),
     roles: normalizeRoles(matches?.data?.game_history),
+    recent: matches ? normalizeRecent(matches.data?.game_history) : null,
     champions: normalizeChampions(summoner.most_champions?.champion_stats),
   };
 }
@@ -263,4 +278,4 @@ async function getChampionTags(names) {
   return new Map(names.filter((name) => tagCache.has(name)).map((name) => [name, tagCache.get(name)]));
 }
 
-module.exports = { REGIONS, parseRiotId, defaultTags, opggUrl, championKey, normalizeRank, normalizeRoles, normalizeChampions, getPlayer, getCounters, getRolePools, getChampionTags };
+module.exports = { REGIONS, parseRiotId, defaultTags, opggUrl, championKey, normalizeRank, normalizeRoles, normalizeRecent, normalizeChampions, getPlayer, getCounters, getRolePools, getChampionTags };
