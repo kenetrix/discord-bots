@@ -74,7 +74,7 @@ All commands are slash commands; Discord's default permissions decide who sees t
 
 ## Running the bot machine
 
-**Web interface** (port 8080): all bots with status, start/stop/restart/update (their output goes into the bot's log, also when run with `botctl`), logs (with a Clear button), a form for each bot's variables (secrets are write-only), a copy-invite-link button, add and delete. The footer shows whether a newer `botctl` or web interface is available (checked hourly against the install source) and, only then, a Self-update button that runs `botctl self-update`; the page reloads after the restart and asks for the password again. It runs as root over plain HTTP, so use it in a trusted network or behind an HTTPS reverse proxy. The password is in `/etc/botctl-web/password`; five wrong attempts block a client for five minutes.
+**Web interface** (port 8080): all bots with status, start/stop/restart/update (their output goes into the bot's log, also when run with `botctl`, with times in the bot's time zone, `TZ` in its `.env`), logs (with a Clear button), a form for each bot's variables (secrets are write-only), a copy-invite-link button, add and delete. The footer shows whether a newer `botctl` or web interface is available (checked hourly against the install source) and, only then, a Self-update button that runs `botctl self-update`; the page reloads after the restart and asks for the password again. It runs as root over plain HTTP, so use it in a trusted network or behind an HTTPS reverse proxy. The password is in `/etc/botctl-web/password`; five wrong attempts block a client for five minutes.
 
 **`botctl`** does the same inside the container (`pct enter <CTID>`):
 
