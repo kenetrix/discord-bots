@@ -74,7 +74,7 @@ All commands are slash commands; Discord's default permissions decide who sees t
 
 ## Running the bot machine
 
-**Web interface** (port 8080): all bots with status, start/stop/restart/update, logs, a form for each bot's variables (secrets are write-only), a copy-invite-link button, add and delete. It runs as root over plain HTTP, so use it in a trusted network or behind an HTTPS reverse proxy. The password is in `/etc/botctl-web/password`; five wrong attempts block a client for five minutes.
+**Web interface** (port 8080): all bots with status, start/stop/restart/update, logs (with a Clear button), a form for each bot's variables (secrets are write-only), a copy-invite-link button, add and delete. The footer shows whether a newer `botctl` or web interface is available (checked hourly against the install source) and has a Self-update button that runs `botctl self-update`; the page reloads after the restart and asks for the password again. It runs as root over plain HTTP, so use it in a trusted network or behind an HTTPS reverse proxy. The password is in `/etc/botctl-web/password`; five wrong attempts block a client for five minutes.
 
 **`botctl`** does the same inside the container (`pct enter <CTID>`):
 
@@ -83,12 +83,13 @@ botctl add <name> <git-url> --path <subfolder>   # private repo: https://<token>
 botctl env <name>        # edit DISCORD_TOKEN, CLIENT_ID, GUILD_ID
 botctl start <name>      # registers slash commands and starts the bot
 botctl logs <name>
+botctl clear-logs <name> # empty the log
 botctl update <name>     # git pull, npm ci, re-register commands, restart if running
 botctl update-all
 botctl list
 ```
 
-Each bot lives in `/opt/bots/<name>/`, which holds only the bot's own files (the `--path` subfolder of the repo), its `.env`, `data/` and `node_modules/`. No copy of the repository is kept: `add` and `update` download only that subfolder into a temporary folder, copy its files over and delete the download. Files git does not track are never touched. Where a bot comes from (URL, branch, subfolder, version) and which files `botctl` put in place is stored in the info file `/opt/bots/<name>/.botctl` (readable by root only). Bots installed with an older `botctl`, where `/opt/bots/<name>/` held the whole repository, are cleaned up by the next `botctl update` (or `update-all`), keeping `.env`, `data/` and every other untracked file. Each bot runs as user `bots` in the OpenRC service `bot.<name>` and starts after a reboot. Any repo with a `package.json` and a `start` script works; an optional `deploy-commands` script runs on `start` and `update`.
+Each bot lives in `/opt/bots/<name>/`, which holds only the bot's own files (the `--path` subfolder of the repo), its `.env`, `data/` and `node_modules/`. No copy of the repository is kept: `add` and `update` download only that subfolder into a temporary folder, copy its files over and delete the download. Files git does not track are never touched. Where a bot comes from (URL, branch, subfolder, version) and which files `botctl` put in place is stored in the info file `/opt/bots/<name>/.botctl` (readable by root only). Each bot runs as user `bots` in the OpenRC service `bot.<name>` and starts after a reboot. Any repo with a `package.json` and a `start` script works; an optional `deploy-commands` script runs on `start` and `update`.
 
 **Updating:** on a Proxmox container run `update` inside it: it refreshes `botctl` and the web interface, updates all bots and the Alpine packages. On any machine, `botctl self-update` (or running the installer again) refreshes `botctl` and the web interface, and `botctl update-all` updates the bots.
 
