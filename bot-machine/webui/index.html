@@ -106,7 +106,7 @@
       <span id="update-status">Checking for updates …</span>
       <div class="row">
         <button id="update-check" class="ghost" title="Check for a new botctl and web interface now">Check now</button>
-        <button id="self-update" title="Update botctl and the web interface">Self-update</button>
+        <button id="self-update" class="primary hidden" title="Update botctl and the web interface">Self-update</button>
       </div>
     </footer>
   </section>
@@ -401,14 +401,14 @@ async function loadUpdate(force) {
   const { ok, data } = await api('GET', `/api/update${force ? '?refresh' : ''}`);
   if (!ok) return;
   const status = $('update-status');
-  const checked = new Date(data.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   status.classList.toggle('update', Boolean(data.available));
   status.textContent = data.error
     ? `Version ${data.version} · ${data.error}`
     : data.available
       ? `Version ${data.version} · A new update is available`
-      : `Version ${data.version} · Up to date (checked ${checked})`;
-  $('self-update').classList.toggle('primary', Boolean(data.available));
+      : `Version ${data.version} · Up to date`;
+  // Only offered when the install source really has newer files.
+  $('self-update').classList.toggle('hidden', !data.available);
 }
 
 // The server restarts during the update: wait until it answers with a new start time, then reload.
