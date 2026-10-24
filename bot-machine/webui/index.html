@@ -193,14 +193,14 @@ async function copyText(text) {
   }
 }
 
-async function act(label, fn) {
+async function act(label, fn, { output = true } = {}) {
   if (busy) return;
   busy = true;
   document.querySelectorAll('button').forEach((b) => (b.disabled = true));
   try {
     const { ok, data } = await fn();
-    showOutput(data.output || data.error || '');
-    toast(ok ? `${label}: done` : `${label}: failed`);
+    if (output) showOutput(data.output || data.error || '');
+    toast(ok ? `${label}: done` : `${label}: failed${output ? '' : ' - see Logs'}`);
   } finally {
     busy = false;
     document.querySelectorAll('button').forEach((b) => (b.disabled = false));
@@ -208,7 +208,9 @@ async function act(label, fn) {
   }
 }
 
-const post = (name, action) => () => act(action[0].toUpperCase() + action.slice(1), () => api('POST', `/api/bots/${name}/${action}`));
+// botctl writes the output of start, stop, restart and update into the bot's log, so no output window opens.
+const post = (name, action) => () =>
+  act(action[0].toUpperCase() + action.slice(1), () => api('POST', `/api/bots/${name}/${action}`), { output: false });
 
 function varRow(variable) {
   const secret = SECRET_RE.test(variable.key);

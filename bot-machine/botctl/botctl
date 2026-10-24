@@ -201,6 +201,21 @@ register_commands() {
   (cd "$dir" && as_bot npm run --silent --if-present deploy-commands) || echo "Warning: deploy-commands failed."
 }
 
+# with_log <name> <action> <command…>: runs the command and also writes its output into the bot's log, in the
+# bot's own line format ("2026-10-24 09:35:12 INFO  [botctl] …"), so it shows up in the log view.
+with_log() {
+  local name="$1" action="$2" log="/var/log/bots/$1.log" rc=0 line
+  shift 2
+  log_line() { printf '%s %-5s [botctl] %s\n' "$(date '+%F %T')" "$1" "$2" >>"$log"; }
+  log_line INFO "botctl $action $name"
+  "$@" 2>&1 | while IFS= read -r line; do
+    printf '%s\n' "$line"
+    [[ -z "$line" ]] || log_line INFO "$line"
+  done || rc=$?
+  [[ $rc -eq 0 ]] || log_line ERROR "Failed (exit code $rc)."
+  return "$rc"
+}
+
 cmd_start() { exists "$1"; register_commands "$1"; rc-service "bot.$1" start; echo "Started. Log: botctl logs $1"; }
 
 cmd_update() {
@@ -237,7 +252,7 @@ cmd_update_all() {
       rc=1
       continue
     fi
-    cmd_update "$name" || { echo "Update of $name failed." >&2; rc=1; }
+    with_log "$name" update cmd_update "$name" || { echo "Update of $name failed." >&2; rc=1; }
   done
   return "$rc"
 }
@@ -295,9 +310,10 @@ cmd="${1:-}"; shift || true
 case "$cmd" in
   add) cmd_add "$@" ;;
   env) check_name "${1:-}"; cmd_env "$1" ;;
-  start) check_name "${1:-}"; cmd_start "$1" ;;
-  stop|restart|status) check_name "${1:-}"; exists "$1"; rc-service "bot.$1" "$cmd" ;;
-  update) check_name "${1:-}"; cmd_update "$1" ;;
+  start) check_name "${1:-}"; with_log "$1" start cmd_start "$1" ;;
+  stop|restart) check_name "${1:-}"; exists "$1"; with_log "$1" "$cmd" rc-service "bot.$1" "$cmd" ;;
+  status) check_name "${1:-}"; exists "$1"; rc-service "bot.$1" status ;;
+  update) check_name "${1:-}"; with_log "$1" update cmd_update "$1" ;;
   update-all) cmd_update_all ;;
   self-update) cmd_self_update ;;
   set) check_name "${1:-}"; cmd_set "$1" "${2:-}" ;;
