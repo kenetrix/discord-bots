@@ -3,6 +3,8 @@
 set -Eeuo pipefail
 
 BOTS_DIR=/opt/bots
+# Git checkouts live here, so /opt/bots/<name>/ only holds the bot's own files.
+REPOS_DIR=/var/lib/botctl/repos
 BOT_USER=bots
 
 die() { echo "Error: $*" >&2; exit 1; }
@@ -12,6 +14,89 @@ check_name() { [[ "${1:-}" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "Invalid bot name '
 exists() { [[ -d "$BOTS_DIR/$1" && -f "/etc/init.d/bot.$1" ]] || die "Bot '$1' does not exist. 'botctl list' shows all bots."; }
 app_dir() { sed -n 's/^directory="\(.*\)"$/\1/p' "/etc/init.d/bot.$1"; }
 is_active() { rc-service "bot.$1" status >/dev/null 2>&1; }
+
+check_sub() {
+  [[ -z "$1" || ( "$1" =~ ^[A-Za-z0-9._/-]+$ && ! "$1" =~ (^|/)\.\.(/|$) ) ]] || die "Invalid subfolder '$1'."
+}
+
+ensure_repos_dir() {
+  mkdir -p "$REPOS_DIR"
+  chown "$BOT_USER:$BOT_USER" "$REPOS_DIR"
+  chmod 0750 "$REPOS_DIR"
+}
+
+# clone_repo <name> <url> <branch> <subfolder>: shallow clone into the repo cache, only the subfolder checked out.
+clone_repo() {
+  local repo="$REPOS_DIR/$1" url="$2" branch="$3" sub="$4"
+  ensure_repos_dir
+  rm -rf "$repo"
+  echo "Cloning ${url//\/\/*@/\/\/***@} …"
+  as_bot git clone --quiet --depth 1 ${sub:+--sparse} ${branch:+--branch "$branch"} "$url" "$repo"
+  [[ -z "$sub" ]] || as_bot git -C "$repo" sparse-checkout set -- "$sub"
+  as_bot git -C "$repo" config botctl.path "$sub"
+}
+
+# Files of the subfolder tracked by git, relative to the subfolder.
+tracked_files() {
+  local repo="$REPOS_DIR/$1" sub; sub=$(as_bot git -C "$repo" config botctl.path || true)
+  as_bot git -C "$repo" -c core.quotePath=false ls-files -- ${sub:+"$sub/"} | sed "s|^${sub:+$sub/}||"
+}
+
+# Copies the bot's files from the repo cache to /opt/bots/<name>/. Files that are not tracked
+# by git (.env, data/, node_modules/ …) are never touched; files removed upstream are deleted.
+deploy() {
+  local name="$1" root="$BOTS_DIR/$1" repo="$REPOS_DIR/$1" sub src manifest rel dir
+  sub=$(as_bot git -C "$repo" config botctl.path || true)
+  src="$repo${sub:+/$sub}"
+  [[ -f "$src/package.json" ]] || die "No package.json in ${sub:-the repository root}."
+  manifest="$repo/.git/botctl-deployed"
+  local new; new=$(tracked_files "$name")
+  mkdir -p "$root"
+  while IFS= read -r rel; do
+    [[ -n "$rel" ]] || continue
+    mkdir -p "$root/$(dirname "$rel")"
+    rm -f "$root/$rel"
+    cp -pP "$src/$rel" "$root/$rel"
+  done <<<"$new"
+  if [[ -f "$manifest" ]]; then
+    while IFS= read -r rel; do
+      [[ -n "$rel" ]] && ! grep -qxF -- "$rel" <<<"$new" || continue
+      rm -f "$root/$rel"
+      dir=$(dirname "$rel")
+      while [[ "$dir" != "." ]] && rmdir "$root/$dir" 2>/dev/null; do dir=$(dirname "$dir"); done
+    done <"$manifest"
+  fi
+  printf '%s\n' "$new" >"$manifest"
+  chown -R "$BOT_USER:$BOT_USER" "$root" "$manifest"
+  chmod 0750 "$root"
+}
+
+# Bots installed before the repo cache had the whole repository in /opt/bots/<name>/ and the
+# bot in a subfolder of it. Moves the git checkout out and keeps every untracked file of the bot.
+migrate_legacy() {
+  local name="$1" root="$BOTS_DIR/$1" dir sub url branch backup p rel
+  dir=$(app_dir "$name")
+  sub=""; [[ "$dir" == "$root" ]] || sub="${dir#"$root"/}"
+  url=$(as_bot git -C "$root" remote get-url origin)
+  branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
+  echo "$name: moving the repository out of $root …"
+  clone_repo "$name" "$url" "$branch" "$sub"
+  rc-service "bot.$name" stop >/dev/null 2>&1 || true
+  backup="$REPOS_DIR/$name.legacy"
+  rm -rf "$backup"
+  mv "$root" "$backup"
+  mkdir -p "$root"
+  # .env, data/ and anything else git does not track; node_modules/ is installed again.
+  while IFS= read -r p; do
+    p="${p%/}"; rel="${p#"${sub:+$sub/}"}"
+    [[ -n "$rel" && "$rel" != node_modules && ! -e "$root/$rel" ]] || continue
+    mkdir -p "$root/$(dirname "$rel")"
+    mv "$backup/$p" "$root/$rel"
+  done < <(as_bot git -C "$backup" -c core.quotePath=false ls-files --others --directory -- "${sub:-.}")
+  sed -i "s|^directory=.*|directory=\"$root\"|" "/etc/init.d/bot.$name"
+  deploy "$name"
+  rm -rf "$backup"
+}
 
 install_deps() {
   local dir="$1"
@@ -43,6 +128,7 @@ Usage: botctl <command> [arguments]
   stop <name>        Stop the bot
   restart <name>     Restart the bot
   update <name>      Pull the latest version, install dependencies, restart
+                     (also moves bots of the old layout to the repo cache)
   update-all         Update every installed bot
   set <name> <KEY>   Set KEY in the bot's .env to the value read from stdin
   logs <name>        Show the live log (Ctrl+C to quit)
@@ -71,14 +157,15 @@ cmd_add() {
   [[ -n "$url" ]] || die "Git URL is missing."
   [[ -e "$BOTS_DIR/$name" ]] && die "Bot '$name' already exists."
 
-  local root="$BOTS_DIR/$name"
+  check_sub "${sub#/}"
+  sub="${sub#/}"; sub="${sub%/}"
+
+  local dir="$BOTS_DIR/$name"
   # A failed add must not leave a half-installed bot behind.
   ADD_OK=0 ADD_NAME="$name"
-  trap 'if [[ $ADD_OK -ne 1 ]]; then rm -rf "$BOTS_DIR/$ADD_NAME" "/etc/init.d/bot.$ADD_NAME"; fi' EXIT
-  echo "Cloning ${url//\/\/*@/\/\/***@} …"
-  as_bot git clone --quiet --depth 1 ${branch:+--branch "$branch"} "$url" "$root"
-  local dir="$root${sub:+/${sub#/}}"
-  [[ -f "$dir/package.json" ]] || { rm -rf "$root"; die "No package.json in $dir."; }
+  trap 'if [[ $ADD_OK -ne 1 ]]; then rm -rf "$BOTS_DIR/$ADD_NAME" "$REPOS_DIR/$ADD_NAME" "/etc/init.d/bot.$ADD_NAME"; fi' EXIT
+  clone_repo "$name" "$url" "$branch" "$sub"
+  deploy "$name"
 
   echo "Installing dependencies …"
   install_deps "$dir"
@@ -137,14 +224,22 @@ cmd_start() { exists "$1"; register_commands "$1"; rc-service "bot.$1" start; ec
 
 cmd_update() {
   need_root; exists "$1"
-  local root="$BOTS_DIR/$1" dir; dir=$(app_dir "$1")
+  local root="$BOTS_DIR/$1" repo="$REPOS_DIR/$1" before after branch
   local was_active=0; is_active "$1" && was_active=1
-  local branch; branch=$(as_bot git -C "$root" rev-parse --abbrev-ref HEAD)
-  local before; before=$(as_bot git -C "$root" rev-parse --short HEAD)
-  as_bot git -C "$root" fetch --quiet --depth 1 origin "$branch"
-  as_bot git -C "$root" reset --quiet --hard FETCH_HEAD
-  local after; after=$(as_bot git -C "$root" rev-parse --short HEAD)
+  if [[ -d "$root/.git" ]]; then
+    before=$(as_bot git -C "$root" rev-parse --short HEAD)
+    migrate_legacy "$1"
+  else
+    [[ -d "$repo/.git" ]] || die "No repository for '$1' in $REPOS_DIR. Remove the bot and add it again."
+    before=$(as_bot git -C "$repo" rev-parse --short HEAD)
+    branch=$(as_bot git -C "$repo" rev-parse --abbrev-ref HEAD)
+    as_bot git -C "$repo" fetch --quiet --depth 1 origin "$branch"
+    as_bot git -C "$repo" reset --quiet --hard FETCH_HEAD
+    deploy "$1"
+  fi
+  after=$(as_bot git -C "$repo" rev-parse --short HEAD)
   echo "$1: $before → $after"
+  local dir; dir=$(app_dir "$1")
   install_deps "$dir"
   register_commands "$1"
   if [[ $was_active -eq 1 ]]; then
@@ -197,7 +292,8 @@ cmd_list() {
   for root in "$BOTS_DIR"/*/; do
     local name; name=$(basename "$root")
     local state=stopped; is_active "$name" && state=started
-    local rev; rev=$(as_bot git -C "$root" rev-parse --short HEAD 2>/dev/null || echo "-")
+    local rev; rev=$(as_bot git -C "$REPOS_DIR/$name" rev-parse --short HEAD 2>/dev/null ||
+      as_bot git -C "$root" rev-parse --short HEAD 2>/dev/null || echo "-")
     printf '%-20s %-10s %-9s %s\n' "$name" "$state" "$rev" "$(app_dir "$name")"
   done
 }
@@ -208,7 +304,7 @@ cmd_remove() {
   [[ "$a" == "$1" ]] || die "Aborted."
   rc-service "bot.$1" stop >/dev/null 2>&1 || true
   rc-update del "bot.$1" default >/dev/null 2>&1 || true
-  rm -rf "/etc/init.d/bot.$1" "/var/log/bots/$1.log" "${BOTS_DIR:?}/$1"
+  rm -rf "/etc/init.d/bot.$1" "/var/log/bots/$1.log" "${BOTS_DIR:?}/$1" "${REPOS_DIR:?}/$1"
   echo "Bot '$1' deleted."
 }
 
