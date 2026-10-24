@@ -71,6 +71,8 @@
   #output-card { position: relative; }
   #output-card .ghost { position: absolute; top: 8px; right: 8px; }
   #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; max-width: 90vw; z-index: 10; }
+  footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); gap: 12px; }
+  footer .update { color: var(--warn); font-weight: 600; }
   .hidden { display: none; }
 </style>
 </head>
@@ -99,6 +101,14 @@
       <button id="output-close" class="ghost" aria-label="Close output">✕</button>
       <pre id="output"></pre>
     </div>
+
+    <footer class="row spread muted">
+      <span id="update-status">Checking for updates …</span>
+      <div class="row">
+        <button id="update-check" class="ghost" title="Check for a new botctl and web interface now">Check now</button>
+        <button id="self-update" title="Update botctl and the web interface">Self-update</button>
+      </div>
+    </footer>
   </section>
 </main>
 
@@ -376,6 +386,43 @@ function botView(bot) {
   );
 }
 
+async function loadUpdate(force) {
+  const { ok, data } = await api('GET', `/api/update${force ? '?refresh' : ''}`);
+  if (!ok) return;
+  const status = $('update-status');
+  const checked = new Date(data.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  status.classList.toggle('update', Boolean(data.available));
+  status.textContent = data.error
+    ? `Version ${data.version} · ${data.error}`
+    : data.available
+      ? `Version ${data.version} · A new update is available`
+      : `Version ${data.version} · Up to date (checked ${checked})`;
+  $('self-update').classList.toggle('primary', Boolean(data.available));
+}
+
+// The server restarts during the update: wait until it answers with a new start time, then reload.
+async function selfUpdate() {
+  if (busy || !confirm('Update botctl and the web interface now? The page reloads when it is done, then log in again.')) return;
+  busy = true;
+  document.querySelectorAll('button').forEach((b) => (b.disabled = true));
+  $('update-status').textContent = 'Updating …';
+  const { ok, data } = await api('POST', '/api/self-update');
+  if (ok) {
+    const until = Date.now() + 3 * 60 * 1000;
+    while (Date.now() < until) {
+      await new Promise((resolve) => setTimeout(resolve, 2000));
+      const health = await fetch('/api/health').then((res) => res.json()).catch(() => null);
+      if (health && health.startedAt !== data.startedAt) return location.reload();
+    }
+  }
+  busy = false;
+  document.querySelectorAll('button').forEach((b) => (b.disabled = false));
+  const log = await api('GET', '/api/self-update/log');
+  showOutput(log.data.output || data.error || '');
+  toast('Self-update failed');
+  await loadUpdate(true);
+}
+
 async function refresh() {
   const { ok, data } = await api('GET', '/api/bots');
   if (!ok) return;
@@ -394,14 +441,19 @@ $('login-form').addEventListener('submit', async (event) => {
   event.preventDefault();
   const { ok, data } = await api('POST', '/api/login', { password: $('password').value });
   $('password').value = '';
-  if (ok) await refresh();
-  else toast(data.error || 'Login failed');
+  if (ok) {
+    await refresh();
+    loadUpdate(false);
+  } else toast(data.error || 'Login failed');
 });
 
 $('logout').addEventListener('click', async () => {
   await api('POST', '/api/logout');
   showLogin();
 });
+
+$('update-check').addEventListener('click', () => loadUpdate(true));
+$('self-update').addEventListener('click', selfUpdate);
 
 $('output-close').addEventListener('click', () => $('output-card').classList.add('hidden'));
 
@@ -414,7 +466,10 @@ $('add-form').addEventListener('submit', () => {
   act('Add bot', () => api('POST', '/api/bots', body));
 });
 
-refresh().then(() => { if ($('app').classList.contains('hidden')) showLogin(); });
+refresh().then(() => {
+  if ($('app').classList.contains('hidden')) showLogin();
+  else loadUpdate(false);
+});
 </script>
 </body>
 </html>

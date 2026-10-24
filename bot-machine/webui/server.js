@@ -8,7 +8,7 @@ const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
-const { execFile } = require('node:child_process');
+const { execFile, spawn } = require('node:child_process');
 
 const PORT = Number(process.env.WEBUI_PORT) || 8080;
 const HOST = process.env.WEBUI_HOST || '0.0.0.0';
@@ -17,6 +17,11 @@ const BOTS_DIR = process.env.BOTS_DIR || '/opt/bots';
 const LOG_DIR = process.env.LOG_DIR || '/var/log/bots';
 const INIT_DIR = process.env.INIT_DIR || '/etc/init.d';
 const PASSWORD_FILE = process.env.WEBUI_PASSWORD_FILE || '/etc/botctl-web/password';
+const SOURCE_FILE = process.env.WEBUI_SOURCE_FILE || '/etc/botctl-web/source';
+const BOTCTL_BIN = process.env.BOTCTL_BIN || '/usr/local/bin/botctl';
+const SELF_UPDATE_LOG = process.env.SELF_UPDATE_LOG || '/var/log/botctl-web-update.log';
+const UPDATE_CHECK_MS = 60 * 60 * 1000;
+const STARTED_AT = Date.now();
 
 const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const NAME_RE = /^[a-z0-9][a-z0-9-]*$/;
@@ -52,6 +57,46 @@ function botctl(args, { input, timeout = 10 * 60 * 1000 } = {}) {
   const result = queue.then(run, run);
   queue = result.then(() => undefined);
   return result;
+}
+
+// Installed files of the bot machine and where the installer gets them from (relative to the source URL).
+const MACHINE_FILES = [
+  ['botctl/botctl', BOTCTL_BIN],
+  ['webui/server.js', path.join(__dirname, 'server.js')],
+  ['webui/index.html', path.join(__dirname, 'index.html')],
+];
+const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
+
+// An update is available when any installed file differs from the one at the source.
+let updateCache = null;
+async function checkUpdate(force) {
+  if (!force && updateCache && Date.now() - updateCache.checkedAt < UPDATE_CHECK_MS) return updateCache;
+  const local = MACHINE_FILES.map(([, file]) => sha256(fs.existsSync(file) ? fs.readFileSync(file) : ''));
+  const version = sha256(local.join('')).slice(0, 7);
+  try {
+    const source = fs.readFileSync(SOURCE_FILE, 'utf8').trim();
+    const remote = await Promise.all(
+      MACHINE_FILES.map(async ([rel]) => {
+        const res = await fetch(`${source}/${rel}`, { signal: AbortSignal.timeout(15000) });
+        if (!res.ok) throw new Error(`${rel}: HTTP ${res.status}`);
+        return sha256(Buffer.from(await res.arrayBuffer()));
+      }),
+    );
+    updateCache = { version, available: remote.some((hash, i) => hash !== local[i]), checkedAt: Date.now() };
+  } catch (error) {
+    updateCache = { version, available: false, error: `Update check failed (${error.message})`, checkedAt: Date.now() };
+  }
+  return updateCache;
+}
+
+// botctl self-update restarts this server, so it runs detached and logs to a file; the page waits for the restart.
+function startSelfUpdate() {
+  return queue.then(() => {
+    const log = fs.openSync(SELF_UPDATE_LOG, 'w');
+    const child = spawn(BOTCTL, ['self-update'], { detached: true, stdio: ['ignore', log, log] });
+    child.unref();
+    fs.closeSync(log);
+  });
 }
 
 function listBots() {
@@ -196,6 +241,8 @@ async function api(req, res, url) {
   const body = method === 'GET' ? {} : await readBody(req);
 
   if (method === 'POST' && url.pathname === '/api/login') return login(req, res, body);
+  // Lets the page notice the restart after a self-update; tells nothing else.
+  if (method === 'GET' && url.pathname === '/api/health') return send(res, 200, { startedAt: STARTED_AT });
   if (!isAuthenticated(req)) return send(res, 401, { error: 'Not logged in.' });
 
   if (method === 'POST' && url.pathname === '/api/logout') {
@@ -203,6 +250,14 @@ async function api(req, res, url) {
     return send(res, 200, { ok: true }, { 'Set-Cookie': 'sid=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0' });
   }
   if (method === 'GET' && url.pathname === '/api/bots') return send(res, 200, await listBots());
+  if (method === 'GET' && url.pathname === '/api/update') return send(res, 200, await checkUpdate(url.searchParams.has('refresh')));
+  if (method === 'POST' && url.pathname === '/api/self-update') {
+    await startSelfUpdate();
+    return send(res, 200, { ok: true, startedAt: STARTED_AT });
+  }
+  if (method === 'GET' && url.pathname === '/api/self-update/log') {
+    return send(res, 200, { output: fs.existsSync(SELF_UPDATE_LOG) ? fs.readFileSync(SELF_UPDATE_LOG, 'utf8') : '' });
+  }
 
   if (method === 'POST' && url.pathname === '/api/bots') {
     const { name, url: repo, path: sub = '' } = body;
