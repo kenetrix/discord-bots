@@ -71,8 +71,9 @@
   #output-card { position: relative; }
   #output-card .ghost { position: absolute; top: 8px; right: 8px; }
   #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 8px 16px; border-radius: 8px; max-width: 90vw; z-index: 10; }
-  footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); gap: 12px; }
+  footer { margin-top: 28px; padding-top: 12px; border-top: 1px solid var(--line); gap: 12px; justify-content: center; }
   footer .update { color: var(--warn); font-weight: 600; }
+  footer button { padding: 2px 10px; font-size: 13px; }
   .hidden { display: none; }
 </style>
 </head>
@@ -102,12 +103,10 @@
       <pre id="output"></pre>
     </div>
 
-    <footer class="row spread muted">
+    <footer class="row muted">
       <span id="update-status">Checking for updates …</span>
-      <div class="row">
-        <button id="update-check" class="ghost" title="Check for a new botctl and web interface now">Check now</button>
-        <button id="self-update" class="primary hidden" title="Update botctl and the web interface">Self-update</button>
-      </div>
+      <button id="update-check" class="icon" title="Check for a new botctl and web interface now" aria-label="Check for updates now"></button>
+      <button id="self-update" class="primary hidden" title="Update botctl and the web interface">Self-update</button>
     </footer>
   </section>
 </main>
@@ -465,6 +464,7 @@ $('logout').addEventListener('click', async () => {
   showLogin();
 });
 
+$('update-check').innerHTML = ICONS.refresh;
 $('update-check').addEventListener('click', () => loadUpdate(true));
 $('self-update').addEventListener('click', selfUpdate);
 
