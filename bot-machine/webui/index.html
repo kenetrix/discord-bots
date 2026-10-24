@@ -312,10 +312,21 @@ async function toggleLogs(bot, box, button) {
   };
   const reload = el('button', { className: 'ghost icon', innerHTML: ICONS.refresh, title: 'Refresh the log', onclick: load });
   reload.setAttribute('aria-label', 'Refresh the log');
+  const clear = el('button', {
+    className: 'ghost danger',
+    textContent: 'Clear',
+    title: 'Delete all lines of this log',
+    onclick: async () => {
+      if (!confirm(`Clear the log of ${bot.name}?`)) return;
+      const { ok, data } = await api('DELETE', `/api/bots/${bot.name}/logs`);
+      toast(ok ? 'Log cleared.' : data.error || data.output || 'Clearing the log failed.');
+      await load();
+    },
+  });
   box.replaceChildren(
     el('div', { className: 'row spread logbar' },
       el('div', { className: 'row levels' }, ...toggles),
-      el('div', { className: 'row' }, el('span', { className: 'muted', textContent: 'Last 500 lines' }), reload),
+      el('div', { className: 'row' }, el('span', { className: 'muted', textContent: 'Last 500 lines' }), clear, reload),
     ),
     text,
   );

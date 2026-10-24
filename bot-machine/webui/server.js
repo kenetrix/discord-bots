@@ -288,6 +288,7 @@ async function api(req, res, url) {
   if (method === 'POST' && ['start', 'stop', 'restart', 'update'].includes(action)) {
     return result(res, await botctl([action, name]));
   }
+  if (method === 'DELETE' && action === 'logs') return result(res, await botctl(['clear-logs', name]));
   if (method === 'DELETE' && !action) return result(res, await botctl(['remove', name], { input: `${name}\n` }));
   return send(res, 404, { error: 'Not found' });
 }
